@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Lab 6: Canine Capers — C++17</title><style>body{font:17px/1.65 system-ui,sans-serif;color:#20252c;max-width:1040px;margin:40px auto;padding:0 28px}h1,h2,h3,h4{line-height:1.25;margin-top:1.8em}a{color:#165eb8}pre{background:#f2f4f7;padding:18px;overflow:auto;font-size:14px;line-height:1.5}code{font-family:ui-monospace,monospace}img{max-width:100%;height:auto}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccd1d8;padding:9px;text-align:left}blockquote,.note{border-left:4px solid #6487ac;padding:12px 20px;background:#f5f7fa}.source{font-size:14px;border-bottom:1px solid #ccc;padding-bottom:18px}nav ul{columns:2}li{break-inside:avoid}@media(max-width:650px){nav ul{columns:1}body{padding:0 16px}}</style></head><body><h1>Lab 6: Canine Capers — C++17</h1><nav aria-label="Contents"><ul><li><a href="#intro">What you will learn</a></li><li><a href="#persistence">Persistence</a></li><li><a href="#build">Compile and run</a></li><li><a href="#files">Paths, files, and directories</a></li><li><a href="#serialization">Object encoding</a></li><li><a href="#exercise">Exercise: Canine Capers</a></li><li><a href="#starter">Starter responsibilities</a></li><li><a href="#order">Suggested order</a></li><li><a href="#usage">Example output after completion</a></li><li><a href="#testing">Tests and debugging</a></li></ul></nav>
+<p class="source">C++17 adaptation of <a href="https://sp21.datastructur.es/materials/lab/lab6/lab6">CS61B Spring 2021 Lab 6: Canine Capers</a>. Prerequisite for the <a href="../Instructions.html">C++ Gitlet project</a>. The original Java files are archived under <code>../original-java/lab6 - prereq/</code>.</p>
+<h2 id="intro">What you will learn</h2>
+<p>Build a small command-line program that remembers a story and some dogs across invocations. Practice compiling C++, reading arguments, using the filesystem, and encoding objects into files. The starter includes the same core exercises as the Java lab; persistence and repository methods remain TODOs.</p>
+<h2 id="persistence">Persistence</h2>
+<p>Variables exist only while a process runs. C++ static variables do not survive program termination. To remember a dog's age tomorrow, save it to a file today, then load it in a new invocation. A successful implementation must work when every command is launched as a separate process.</p>
+<h2 id="build">Compile and run</h2>
+<p>From <code>proj2</code>, run:</p>
+<pre><code>cd "lab6 - prereq"
+make
+./build/capers
+make check</code></pre>
+<p>The no-argument command prints <code>Must have at least one argument</code>. Other commands initially report TODO and exit with status 2. The seven supplied tests will fail until you complete the lab. The compiler builds .cpp files into native code and links an executable; .hpp files declare interfaces and are included by source files.</p>
+<pre><code># Still in lab6 - prereq; keep data separate from your source:
+export PATH="$(pwd)/build:$PATH"
+mkdir -p playground
+cd playground
+# These are the target behaviors after you implement the exercises:
+capers story "Once upon a time"
+capers dog Fido dalmatian 3
+capers birthday Fido</code></pre>
+<p><code>argc</code> counts all command-line arguments, including the executable at <code>argv[0]</code>. The supplied main copies <code>argv[1]</code> onward into a vector. Quotes group words into one argument; the shell removes the quotes before passing the argument to your program.</p>
+<h2 id="files">Paths, files, and directories</h2>
+<pre><code>#include &lt;filesystem&gt;
+#include "gitlet/Utils.hpp"
+namespace fs = std::filesystem;
+fs::path cwd = fs::current_path();
+fs::path folder = cwd / ".capers";
+// Paths alone do not create anything:
+// fs::create_directories(folder);</code></pre>
+<p>The current working directory is where you launch the program. A relative path is interpreted from there; an absolute path starts at the filesystem root. Join path components with <code>/</code>. Check with <code>fs::exists</code>, <code>fs::is_directory</code>, and <code>fs::is_regular_file</code>. <code>fs::create_directories</code> also creates missing ancestors.</p>
+<p>The shared helpers are declared in <code>../gitlet/Utils.hpp</code>. Include them as <code>"gitlet/Utils.hpp"</code>; the Makefile sets the include path. <code>readContents</code> returns exact file bytes in a std::string; <code>writeContents</code> creates or overwrites a file. You must create its parent directory first. To append text you may read, concatenate, and rewrite, or use an ofstream opened in append mode. Do not truncate an existing story during setup.</p>
+<h2 id="serialization">Object encoding</h2>
+<p>Decide how to represent the dog's name, breed, and age on disk. Reading must reverse writing exactly. Strings can contain spaces, so whitespace splitting is insufficient unless your format handles them. Do not dump the raw bytes of a Dog object: std::string contains memory-management details that are meaningless in another process.</p>
+<p>You may use a text format of your own, or the shared BinaryWriter/BinaryReader helpers. These encode strings as a length followed by bytes and unsigned integers as eight bytes in big-endian order. Pick a field order and read it back in that order. The dog's age field is an <code>int</code>; choose an encoding that preserves its value.</p>
+<p>If you implement <code>std::string Dog::serialize() const</code> and <code>static Dog Dog::deserialize(const std::string&amp;)</code>, the optional <code>writeObject(path, dog)</code> and <code>readObject&lt;Dog&gt;(path)</code> templates become available. Those methods are yours to implement. See the <a href="../Instructions.html#serialization-details">Gitlet serialization guide</a> for the helper contracts.</p>
+<h2 id="exercise">Exercise: Canine Capers</h2>
+<p>All saved state belongs under <code>.capers</code> in the current working directory. The recommended layout is:</p>
+<pre><code>.capers/
+    story
+    dogs/
+        ...your saved dog files...</code></pre>
+<p>Your program creates these directories/files; do not depend on manually creating them first. Assume dog names are unique, as in the original lab. The lab does not require handling invalid input or error cases; Gitlet does.</p>
+<table><tr><th>Command</th><th>Required behavior</th></tr>
+<tr><td><code>story TEXT</code></td><td>Append TEXT plus a newline to the saved story. Print the entire accumulated story.</td></tr>
+<tr><td><code>dog NAME BREED AGE</code></td><td>Create and save a dog. Print its toString() result.</td></tr>
+<tr><td><code>birthday NAME</code></td><td>Load that dog, increment its age, print its updated description and birthday greeting, then persist the new age.</td></tr>
+</table>
+<h2 id="starter">Starter responsibilities</h2>
+<ul><li><code>capers/Main.cpp</code>: argument parsing is partly provided. Finish dog and birthday dispatch. Convert the age with std::stoi.</li><li><code>capers/CapersRepository.hpp/.cpp</code>: implement setupPersistence, writeStory, makeDog, and celebrateBirthday; choose the metadata paths.</li><li><code>capers/Dog.hpp/.cpp</code>: fields, constructor, toString, and haveBirthday are provided, matching the original starter. Implement fromFile, saveDog, and any encoding methods you choose.</li></ul>
+<p>When replacing a stub, remove its NotImplemented throw. The commented-out parameter names in the stubs avoid unused-parameter warnings; restore those names when you use the parameters.</p>
+<h2 id="order">Suggested order</h2>
+<ol><li>Implement directory/file setup without overwriting existing data.</li><li>Implement story and pass the first two tests.</li><li>Design the dog's encoding and implement saving/loading.</li><li>Wire up dog creation and birthdays.</li><li>Run all seven tests, then try names/breeds with spaces and restart the executable between operations.</li></ol>
+<h2 id="usage">Example output after completion</h2>
+<pre><code>$ capers story "Hello"
+Hello
+$ capers story "World"
+Hello
+World
+$ capers dog Fido dalmatian 3
+Woof! My name is Fido and I am a dalmatian! I am 3 years old! Woof!
+$ capers birthday Fido
+Woof! My name is Fido and I am a dalmatian! I am 4 years old! Woof!
+Happy birthday! Woof! Woof!</code></pre>
+<h2 id="testing">Tests and debugging</h2>
+<pre><code># In lab6 - prereq:
+make check
+make check TESTER_FLAGS="--show=all --verbose"
+cd testing
+python3 runner.py --keep --show=all our/test04-dog-birthday.in</code></pre>
+<p>Build before running the Python runner directly. It starts the C++ executable in an isolated test directory. No Java or course library setup is required. The .in tests are the original fixtures; the adapter is shared with Gitlet. Refer to the <a href="../Instructions.html#understanding-integration-tests">test grammar</a> and <a href="../Instructions.html#debugging-integration-tests">C++ debugging guide</a>; use build/capers instead of build/gitlet when debugging this lab.</p>
+<p>You are finished when all seven tests pass and a saved story and dog's updated age survive fresh invocations. Then return to <a href="../Instructions.html">Gitlet</a>.</p>
+</body></html>

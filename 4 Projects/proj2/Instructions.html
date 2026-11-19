@@ -1,0 +1,1519 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Project 2: Gitlet — C++17</title><style>body{font:17px/1.65 system-ui,sans-serif;color:#20252c;max-width:1040px;margin:40px auto;padding:0 28px}h1,h2,h3,h4{line-height:1.25;margin-top:1.8em}a{color:#165eb8}pre{background:#f2f4f7;padding:18px;overflow:auto;font-size:14px;line-height:1.5}code{font-family:ui-monospace,monospace}img{max-width:100%;height:auto}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccd1d8;padding:9px;text-align:left}blockquote,.note{border-left:4px solid #6487ac;padding:12px 20px;background:#f5f7fa}.source{font-size:14px;border-bottom:1px solid #ccc;padding-bottom:18px}nav ul{columns:2}li{break-inside:avoid}@media(max-width:650px){nav ul{columns:1}body{padding:0 16px}}</style></head><body><h1>Project 2: Gitlet — C++17</h1><nav aria-label="Contents"><ul><li><a href="#start-here">Start here</a></li><li><a href="#skeleton">C++ starter layout</a></li><li><a href="#a-note-on-this-spec">Using the original learning material</a></li><li><a href="#overview-of-gitlet">Overview of Gitlet</a></li><li><a href="#internal-structures">Internal Structures</a></li><li><a href="#detailed-spec-of-behavior">Detailed specification of behavior</a></li><li><a href="#overall-spec">Overall requirements</a></li><li><a href="#the-commands">The Commands</a></li><li><a href="#init">init</a></li><li><a href="#add">add</a></li><li><a href="#commit">commit</a></li><li><a href="#rm">rm</a></li><li><a href="#log">log</a></li><li><a href="#global-log">global-log</a></li><li><a href="#find">find</a></li><li><a href="#status">status</a></li><li><a href="#checkout">checkout</a></li><li><a href="#branch">branch</a></li><li><a href="#rm-branch">rm-branch</a></li><li><a href="#reset">reset</a></li><li><a href="#merge">merge</a></li><li><a href="#design-document">Design document and checkpoints</a></li><li><a href="#dealing-with-files">Files and directories in C++</a></li><li><a href="#serialization-details">Explicit object serialization</a></li><li><a href="#testing">Building and testing</a></li><li><a href="#understanding-integration-tests">Writing .in integration tests</a></li><li><a href="#debugging-integration-tests">Debugging C++</a></li><li><a href="#dear-imgui-extension">Optional extension: Dear ImGui GUI</a></li><li><a href="#going-remote-extra-credit">Optional extension: local remotes</a></li><li><a href="#the-commands-1">The Commands</a></li><li><a href="#add-remote">add-remote</a></li><li><a href="#rm-remote">rm-remote</a></li><li><a href="#push">push</a></li><li><a href="#fetch">fetch</a></li><li><a href="#pull">pull</a></li><li><a href="#i-things-to-avoid">Implementation pitfalls</a></li><li><a href="#j-acknowledgments">Sources and adaptation</a></li></ul></nav>
+<p class="source">C++17 self-study adaptation of <a href="https://sp21.datastructur.es/materials/proj/proj2/proj2">CS61B Spring 2021 Project 2: Gitlet</a>.
+The command behavior, failure messages, complexity requirements, and supplied sample tests are retained.
+The original files are preserved under <code>original-java/</code>. This adaptation uses its own executable and storage format; it does not plug into the course's Java autograder.</p>
+<h2 id="start-here">Start here</h2>
+<p>Build a small version-control system in C++17. The support code is ready; implementing the repository, commits, staging, branching, checkout, and merge is your work. Begin with the <a href="lab6%20-%20prereq/Instructions.html">C++ Capers prerequisite</a> if persistence is new to you.</p>
+<p>You need a C++17 compiler, Make, and Python 3 for the test runner. Python is only a testing tool; the application is C++. On this Mac, the installed compiler and Make are sufficient. No downloaded C++ libraries are required for the CLI assignment. The <a href="#dear-imgui-extension">optional Dear ImGui extension</a> adds GUI dependencies when you choose to implement it. On another Mac, Apple's Command Line Tools provide the compiler and Make; on Linux, use a recent GCC or Clang toolchain. The supplied Makefiles target macOS/Linux (or Linux through WSL).</p>
+<pre><code># From the CS61B course folder:
+cd "4 Projects/proj2"
+make
+make capers</code></pre>
+<p><code>make</code> produces <code>build/gitlet</code> and <code>build/dumpobj</code>. <code>make capers</code> builds the prerequisite separately. <code>make check</code> runs the Gitlet assignment tests and is expected to fail until you implement the commands. A TODO diagnostic and exit status 2 mean an exercise is unfinished.</p>
+<p>Run the executable from a scratch working directory. Add the project's absolute build directory to PATH for this terminal session, so the command examples below can use <code>gitlet</code>:</p>
+<pre><code># Still in proj2:
+export PATH="$(pwd)/build:$PATH"
+mkdir -p playground
+cd playground
+gitlet init                  # Expected to report TODO in the starter.
+# After implementing the relevant commands:
+printf 'hello\n' &gt; hello.txt
+gitlet add hello.txt
+gitlet commit "first snapshot"
+gitlet log</code></pre>
+<p>The <code>.gitlet</code> directory belongs to the directory where you run the command. The executable's location does not decide where repository data goes. Return to the project directory to rebuild after source edits. <code>make clean</code> removes build products, leaving saved repositories and retained test directories intact. If you change compiler flags, clean before rebuilding.</p>
+<h2 id="skeleton">C++ starter layout</h2>
+<table><tr><th>File</th><th>Role</th></tr>
+<tr><td><code>gitlet/Main.cpp</code></td><td>Entry point and exception boundary. Empty input is handled; dispatch and operand validation are exercises.</td></tr>
+<tr><td><code>gitlet/Repository.hpp/.cpp</code></td><td>Working-directory paths are provided. Design repository operations and storage.</td></tr>
+<tr><td><code>gitlet/Commit.hpp/.cpp</code></td><td>Minimal commit skeleton. Choose fields, methods, and encoding.</td></tr>
+<tr><td><code>gitlet/Utils.hpp/.cpp</code></td><td>Provided SHA-1, binary file I/O, sorted filenames, guarded deletion, and optional binary codec helpers.</td></tr>
+<tr><td><code>gitlet/GitletException.hpp</code></td><td>Specified user errors and a separate exception for unfinished exercises.</td></tr>
+<tr><td><code>gitlet/DumpObj.cpp</code>, <code>Dumpable.hpp</code></td><td>A byte-inspection tool and an optional interface for your decoded objects.</td></tr>
+<tr><td><code>testing/</code></td><td>The original .in samples and fixtures, with a C++ executable adapter.</td></tr>
+</table>
+<p>Use headers for declarations and .cpp files for definitions. The Makefile discovers .cpp files under <code>gitlet/</code> automatically, excluding the separate dump tool. Keep one main function per executable. Add assignment tests under <code>testing/student_tests/</code> using the .in format below.</p>
+<p>Use standard containers and values: <code>std::string</code>, <code>std::vector</code>, <code>std::map</code>, <code>std::unordered_map</code>, and <code>std::set</code> are available. References avoid unnecessary copies; ordinary containers manage their own storage. You do not need raw owning pointers or manual new/delete to implement this project.</p>
+<h2 id="a-note-on-this-spec">Using the original learning material</h2>
+<p>The original Gitlet videos still explain the version-control model. Their Java syntax, IDE instructions, and course submission steps are historical; use this page for C++ setup.</p>
+<ul><li><a href="https://www.youtube.com/watch?v=-1gE2cNFhPA">Gitlet introduction, part 1</a></li><li><a href="https://www.youtube.com/watch?v=GfmH9_8tM5w">Gitlet introduction, part 2</a></li><li><a href="https://www.youtube.com/watch?v=dv5VdbIZKF8">Gitlet introduction, part 3</a></li><li><a href="https://www.youtube.com/watch?v=k8jwbG8bE7Y">Gitlet introduction, part 4</a></li><li><a href="https://youtu.be/desB3AS6aZg">Branching overview</a></li><li><a href="https://www.youtube.com/watch?v=JR3OYCMv9b4&amp;t=929s">Merge overview</a></li></ul>
+<h2 id="overview-of-gitlet">Overview of Gitlet</h2>
+
+<p><strong>Warning:</strong> Ensure you’ve completed <a href="lab6%20-%20prereq/Instructions.html">Lab 6: Canine Capers</a>
+before this project. Lab 6 is intended to be an introduction to this project and
+will be very helpful in getting you started and ensure you’re all set up. You should also
+have watched <a href="https://youtu.be/fvhqn5PeU_Q">Lecture 12: Gitlet</a>, which introduces
+many useful ideas for this project.</p>
+
+<p>In this project you’ll be implementing a version-control system that mimics some
+of the basic features of the popular system Git.  Ours is smaller and simpler,
+however, so we have named it Gitlet.</p>
+
+<p>A version-control system is essentially a backup system for related collections
+of files. The main functionality that Gitlet supports is:</p>
+
+<ol>
+  <li>
+    <p>Saving the contents of entire directories of files.
+In Gitlet, this is called <em>committing</em>, and the saved contents themselves are
+called <em>commits</em>.</p>
+  </li>
+  <li>
+    <p>Restoring a version of one or more files or entire commits.
+In Gitlet, this is called <em>checking out</em> those files or that commit.</p>
+  </li>
+  <li>
+    <p>Viewing the history of your backups. In Gitlet, you view this
+history in something called the <em>log</em>.</p>
+  </li>
+  <li>
+    <p>Maintaining related sequences of commits, called <em>branches</em>.</p>
+  </li>
+  <li>
+    <p>Merging changes made in one branch into another.</p>
+  </li>
+</ol>
+
+<p>The point of a version-control system is to help you when creating
+complicated (or even not-so-complicated) projects, or when collaborating
+with others on a project.
+You save versions of the project periodically.
+If at some later point in time you
+accidentally mess up your code, then you can restore your source to
+a previously committed version (without losing any of the changes
+you made since then).  If your collaborators make changes embodied in a commit,
+you can incorporate (<em>merge</em>) these changes into your own version.</p>
+
+<p>In Gitlet, you don’t just commit individual files at a time. Instead,
+you can commit a coherent set of files at the same time. We like to think of
+each commit as a <em>snapshot</em> of your entire project at one point
+in time. However, for simplicity, many of the examples in the
+remainder of this document involve changes to just one file at a time.
+Just keep in mind you could change multiple files in each commit.</p>
+
+<p>In this project, it will be helpful for us to visualize the commits we
+make over time. Suppose we have a project consisting just of the
+file wug.txt, we add some text to
+it, and commit it. Then we modify the file and commit these changes.
+Then we modify the file again, and commit the changes again. Now we
+have saved three total versions of this file, each one later
+in time than the previous. We can visualize these commits like so:</p>
+
+<p><img src="assets/three_commits.png" alt="Three commits"></img></p>
+
+<p>Here we’ve drawn an arrow indicating that each commit contains some
+kind of reference to the commit that came before it. We call the
+commit that came before it the <em>parent commit</em>–this will be important
+later. But for now, does this drawing look familiar? That’s right;
+it’s a linked list!</p>
+
+<p>The big idea behind Gitlet is that we can visualize the history of the
+different versions of our files in a list like this. Then it’s easy
+for us to restore old versions of files. You can imagine making a
+command like: “Gitlet, please revert to the state of the files at
+commit #2”, and it would go to the second node in the linked list and
+restore the copies of files found there, while removing any files that are in the
+first node, but not the second.</p>
+
+<p>If we tell Gitlet to revert to an old commit, the front of the linked
+list will no longer reflect the current state of your files, which
+might be a little misleading. In order to fix this problem, we
+introduce something called the <em>head</em> pointer (also called the HEAD pointer).
+The head pointer keeps track of where in the linked list we currently are.
+Normally, as we make commits, the head pointer will stay at the front of the
+linked list, indicating that the latest commit reflects the current state of the
+files:</p>
+
+<p><img src="assets/simple_head.png" alt="Simple head"></img></p>
+
+<p>However, let’s say we revert to the state of the files at commit #2
+(technically, this is the <em>reset</em> command, which you’ll see later in
+the spec). We move the head pointer back to show this:</p>
+
+<p><img src="assets/reverted_head.png" alt="Reverted head"></img></p>
+
+<p>Here we say that we are in a <em>detatched head state</em> which you may have
+encountered yourself before. This is what it means!</p>
+
+<p>EDITED 3/5: Note that in Gitlet, there is no way to be in a detached head state
+since there is no <code class="language-plaintext highlighter-rouge">checkout</code> command that will move the HEAD pointer to a
+specific commit. The <code class="language-plaintext highlighter-rouge">reset</code> command will do that, though it also moves the
+branch pointer. Thus, in Gitlet, you will never be in a detached HEAD state.</p>
+
+<p>All right, now, if this were all Gitlet could do, it would be a pretty
+simple system. But Gitlet has one more trick up its sleeve: it doesn’t
+just maintain older and newer versions of files, it can maintain
+<em>differing</em> versions. Imagine you’re coding a project, and you have
+two ideas about how to proceed: let’s call one Plan A, and the other
+Plan B. Gitlet allows you to save both versions, and switch between
+them at will. Here’s what this might look like, in our pictures:</p>
+
+<p><img src="assets/two_versions.png" alt="Two versions"></img></p>
+
+<p>It’s not really a linked list anymore. It’s more like a tree. We’ll
+call this thing the <em>commit tree</em>. Keeping with this metaphor, each of
+the separate versions is called a <em>branch</em> of the tree. You can
+develop each version separately:</p>
+
+<p><img src="assets/two_developed_versions.png" alt="Two developed versions"></img></p>
+
+<p>There are two pointers into the tree, representing the furthest
+point of each branch. At any given time, only one of these is the
+currently active pointer, and this is what’s called the head pointer. The
+head pointer is the pointer at the front of the current branch.</p>
+
+<p>That’s it for our brief overview of the Gitlet system! Don’t worry if
+you don’t fully understand it yet; the section above was just to give
+you a high level picture of what its meant to do. A detailed spec of
+what you’re supposed to do for this project follows this section.</p>
+
+<p>But a last word here: commit trees are
+<em>immutable</em>: once a commit node has been created, it can
+never be destroyed (or changed at all). We can only add new things to
+the commit tree, not modify existing things. This is an important
+feature of Gitlet! One of Gitlet’s
+goals is to allow us to save things so we don’t delete
+them accidentally.</p>
+
+<h2 id="internal-structures">Internal Structures</h2>
+
+<p>Real Git distinguishes several different kinds of <em>objects</em>.  For
+our purposes, the important ones are</p>
+<ul>
+  <li><strong><em>blobs</em></strong>: The saved contents of files. Since Gitlet saves many versions of
+      files, a single file might correspond to multiple blobs: each being
+      tracked in a different commit.</li>
+  <li><strong><em>trees</em></strong>: Directory structures mapping names to references to blobs and
+other trees (subdirectories).</li>
+  <li><strong><em>commits</em></strong>: Combinations of log messages,
+other metadata (commit date, author,
+etc.), a reference to a tree, and references to
+parent commits.
+The repository also maintains a mapping from <em>branch heads</em> to references to
+commits, so that certain important commits have symbolic names.</li>
+</ul>
+
+<p>Gitlet simplifies from Git still further by</p>
+<ul>
+  <li>Incorporating trees into commits and not dealing with subdirectories (so
+there will be one
+“flat” directory of plain files for each repository).</li>
+  <li>Limiting ourselves to merges that reference two parents (in real Git, there
+can be any number of parents.)</li>
+  <li>Having our metadata consist only of a timestamp and log message.
+A commit, therefore, will consist of a log message,
+timestamp, a mapping of file names to blob references, a parent
+reference, and (for merges) a second parent reference.</li>
+</ul>
+
+<p>Every object–every blob and every commit in our case–has a unique
+integer id that serves as a reference to the object.  An interesting feature of
+Git is that these ids are <em>universal</em>:  independently of in-memory object identity,
+two objects with exactly the same content will have the same id on all systems
+(i.e. my computer, your computer, and anyone else’s computer will compute this
+same exact id).  In the case of blobs, “same content” means the same file
+contents.  In the case of commits, it means the same metadata, the same mapping
+of names to references, and the same parent reference.  The objects in a
+repository are thus said to be <em>content addressable</em>.</p>
+
+<p>This assignment uses SHA-1 to produce a 160-bit digest, displayed as 40 lowercase hexadecimal characters. The supplied helper hashes exact file or object bytes. For this educational project, assume distinct stored contents have distinct IDs. SHA-1 has known collisions and is not appropriate for new security-sensitive designs.</p>
+
+<p>The supplied <code>gitlet::utils::sha1</code> function computes these IDs; implementing the hash algorithm is not part of your exercise.
+All you have to do is to make sure that you
+correctly label all your objects.  In particular, this involves</p>
+
+<ul>
+  <li>Including all metadata and references when hashing a commit.</li>
+  <li>Distinguishing somehow between hashes for commits and hashes for blobs.  A
+  good way of doing this involves a well-thought out directory structure
+  within the <code class="language-plaintext highlighter-rouge">.gitlet</code> directory. Another way to do so is to hash in an extra
+  word for each object that has one value for blobs and another for commits.</li>
+</ul>
+
+<p>By the way, the SHA-1 hash value, rendered as a 40-character
+hexadecimal string, makes
+a convenient file name for storing your data in your <code class="language-plaintext highlighter-rouge">.gitlet</code>
+directory (more on that below).  It also gives you a convenient way to
+compare two files (blobs) to see if they have the same contents: if their
+SHA-1s are the same, we simply assume the files are the same.</p>
+
+<p>For remotes (like <code class="language-plaintext highlighter-rouge">skeleton</code> which we’ve been using all semester),
+we’ll simply use other Gitlet repositories.  Pushing simply means copying all
+commits and blobs that the remote repository does not yet have to the remote
+repository, and resetting a branch reference.  Pulling is the same, but in the
+other direction. Remotes are an optional extension after the required local commands.</p>
+
+<p>In C++, define the byte representation of each stored object explicitly. Encode its fields in a fixed order, write those bytes, then decode the same fields on a later invocation. The supplied file and codec helpers handle bytes; your classes decide what those bytes mean.</p>
+
+<p>Here is a summary example of the structures discussed in this section.
+As you can see, each commit (rectangle) points to some blobs (circles), which
+contain file contents.  The commits contain the file names and references to
+these blobs, as well as a parent link.  These references, depicted as arrows,
+are represented in the <code class="language-plaintext highlighter-rouge">.gitlet</code> directory using their SHA-1 hash values (the
+small hexadecimal numerals above the commits and below the blobs).  The newer
+commit contains an updated version of <code class="language-plaintext highlighter-rouge">wug1.txt</code>, but shares the same version
+of <code class="language-plaintext highlighter-rouge">wug2.txt</code> as the older commit. Your commit class will somehow store all of
+the information that this diagram shows: a careful selection of internal data
+structures will make the implementation easier or harder, so it behooves you to
+spend time planning and thinking about the best way to store everything.</p>
+
+<p><img src="assets/commits-and-blobs.png" alt="Two commits and their blobs"></img></p>
+
+
+<h2 id="detailed-spec-of-behavior">Detailed specification of behavior</h2>
+<h3 id="overall-spec">Overall requirements</h3>
+<ul>
+<li>Implement the core application in C++17 using the standard library and supplied utilities. The optional GUI extension may additionally use Dear ImGui and its window/input and rendering dependencies. You may add or reorganize classes. Keep command parsing in Main small and put repository logic in appropriate classes.</li>
+<li>Store all persistent repository state under <code>.gitlet</code> in the current working directory. All process memory, including static variables, disappears when an invocation ends. Each new invocation must reload the state it needs.</li>
+<li>Follow each command's runtime and memory requirements. As in the original spec, ignore ordinary metadata serialization costs, but never make metadata serialization depend on the total contents of all tracked files or recursively serialize the entire history. Hash-table lookup may be treated as constant time for analysis.</li>
+<li>Print only specified output. A specified failure must print its exact message, including punctuation, and leave repository and working files unchanged. Throw <code>GitletException</code> for these errors: Main prints the message to stdout and returns 0, matching the course testing convention. Unfinished TODOs return 2; unexpected internal failures return 1.</li>
+<li>No arguments: <code>Please enter a command.</code></li>
+<li>Unknown command: <code>No command with that name exists.</code></li>
+<li>Incorrect operand count or syntax: <code>Incorrect operands.</code></li>
+<li>A command requiring a repository, invoked outside one: <code>Not in an initialized Gitlet directory.</code></li>
+<li>Implement the flat working-directory model of the original assignment. Subdirectory tracking, real Git compatibility, and importing old serialized repositories are outside this version's requirements.</li>
+<li>Commands marked dangerous may overwrite or delete working files. Check their stated failure conditions before mutating anything. Run experiments in scratch directories and use the supplied test runner, which creates an isolated directory for each test.</li>
+</ul>
+<p>The descriptions below preserve the original command behavior. References to testing describe observable behavior; the Java autograder is not used here. Estimates of solution line counts are historical hints, not C++ requirements.</p>
+<h2 id="the-commands">The Commands</h2>
+
+<p>We now go through each command you must support in detail. Remember that good
+programmers always care about their data structures: as you read these commands,
+you should think first about how you should store your data to easily support
+these commands and second about if there is any opportunity to reuse commands
+that you’ve already implemented (hint: there is ample opportunity in this
+project to reuse code in later parts of project 2 that you’ve already written in earlier parts of project 2). We have listed lectures in some
+methods that we have found useful, but you are not required to use concepts from
+these lectures. There are conceptual quizzes on some of the more confusing
+commands that you should definately use to check your understanding. <strong>The
+quizzes are not for a grade</strong>, they are only there to help you check your
+understanding before trying to implement the command.</p>
+
+<h4 id="init">init</h4>
+
+<ul>
+  <li>
+    <p><strong>Usage</strong>: <code class="language-plaintext highlighter-rouge">gitlet init</code></p>
+  </li>
+  <li>
+    <p><strong>Description</strong>: Creates a new Gitlet version-control system in the
+current directory. This system will automatically start with one
+commit: a commit that contains no files and has the commit message
+<code class="language-plaintext highlighter-rouge">initial commit</code> (just like that, with no punctuation).
+It will have a single branch: <code class="language-plaintext highlighter-rouge">master</code>, which
+initially points to this initial commit, and <code class="language-plaintext highlighter-rouge">master</code> will be the
+current branch.  The timestamp for this initial commit will be
+00:00:00 UTC, Thursday, 1 January 1970 in whatever format you
+choose for dates (this is
+called “The (Unix) Epoch”, represented internally by the time 0.)
+Since the initial commit in all repositories
+created by Gitlet will have exactly the same content,
+it follows that all repositories will automatically share
+this commit (they will all have the same UID)
+and all commits in all repositories will trace back to it.</p>
+  </li>
+  <li>
+    <p><strong>Runtime</strong>: Should be constant relative to any significant measure.</p>
+  </li>
+  <li>
+    <p><strong>Failure cases</strong>: If there is already a Gitlet version-control
+system in the current directory, it should abort. It should NOT
+overwrite the existing system with a new one. Should print the error
+message <code class="language-plaintext highlighter-rouge">A Gitlet version-control system already exists in the
+current directory.</code></p>
+  </li>
+  <li>
+    <p><strong>Dangerous?</strong>: No</p>
+  </li>
+  <li>
+    <p><strong>Our line count</strong>: ~15</p>
+  </li>
+</ul>
+
+<h4 id="add">add</h4>
+
+<ul>
+  <li>
+    <p><strong>Usage</strong>: <code class="language-plaintext highlighter-rouge">gitlet add [file name]</code></p>
+  </li>
+  <li>
+    <p><strong>Description</strong>: Adds a copy of the file as it currently exists to
+the <em>staging area</em> (see the description of the <code class="language-plaintext highlighter-rouge">commit</code>
+command).  For this reason, adding a file is also
+called <em>staging</em> the file <em>for addition</em>.
+Staging an already-staged file overwrites the previous entry
+in the staging area with the new contents.
+The staging area should be somewhere in
+<code class="language-plaintext highlighter-rouge">.gitlet</code>. If the current working version of the file is identical to
+the version in the current commit, do not stage it to be added, and remove it
+from the staging area if it is already there (as can happen when a file is
+changed, added, and then changed back to it’s original version).  The file
+will no longer be staged for removal (see <code class="language-plaintext highlighter-rouge">gitlet rm</code>), if it
+was at the time of the command.</p>
+  </li>
+  <li>
+    <p><strong>Runtime</strong>: In the worst case, should run in linear time relative
+to the size of the file being added and $\lg N$, for $N$ the
+number of files in the commit.</p>
+  </li>
+  <li>
+    <p><strong>Failure cases</strong>: If the file does not exist, print the error
+message <code class="language-plaintext highlighter-rouge">File does not exist.</code> and exit without changing
+anything.</p>
+  </li>
+  <li>
+    <p><strong>Dangerous?</strong>: No</p>
+  </li>
+  <li>
+    <p><strong>Our line count</strong>: ~20</p>
+  </li>
+  <li>
+    <p><strong>Differences from real git</strong>: In real git, multiple files may be added at once. In gitlet, only one file may be added at a time.</p>
+  </li>
+  <li>
+    <p><strong>Suggested Lecture(s)</strong>: Lecture 16 (Sets, Maps, ADTs), Lecture 19 (Hashing)</p>
+  </li>
+</ul>
+
+<h4 id="commit">commit</h4>
+
+<ul>
+  <li>
+    <p><strong>Usage</strong>: <code class="language-plaintext highlighter-rouge">gitlet commit [message]</code></p>
+  </li>
+  <li>
+    <p><strong>Description</strong>: Saves a snapshot of tracked files in the current commit
+and staging area so they can be
+restored at a later time, creating a new commit.
+The commit is said to be <em>tracking</em> the saved files. By default,
+each commit’s snapshot of files will be exactly the same as its
+parent commit’s snapshot of files; it will keep versions of files
+exactly as they are, and not update them. A commit will only update
+the contents of files it is tracking that have been staged
+for addition at
+the time of commit, in which case the commit will now include the
+version of the file that was staged instead of the version it got
+from its parent. A commit will save and start tracking any files
+that were staged for addition but weren’t tracked by its parent.  Finally, files tracked
+in the current commit may be untracked in the new commit as a result
+being <em>staged for removal</em> by the
+<code class="language-plaintext highlighter-rouge">rm</code> command (below).</p>
+
+    <p>The bottom line: By default a commit has the same file contents as its parent.
+Files staged for addition and removal are the updates to the commit. Of
+course, the date (and likely the mesage) will also different from the parent.</p>
+
+    <p>Some additional points about commit:</p>
+
+    <ul>
+      <li>
+        <p>The staging area is cleared after a commit.</p>
+      </li>
+      <li>
+        <p>The commit command never adds, changes, or removes files in the
+working directory (other than those in the <code class="language-plaintext highlighter-rouge">.gitlet</code> directory).  The
+<code class="language-plaintext highlighter-rouge">rm</code> command <em>will</em> remove such files, as well as staging them for
+removal, so that they will be untracked after a <code class="language-plaintext highlighter-rouge">commit</code>.</p>
+      </li>
+      <li>
+        <p>Any changes made to files after staging for addition or removal
+are ignored by the
+<code class="language-plaintext highlighter-rouge">commit</code> command, which <em>only</em> modifies the contents of the <code class="language-plaintext highlighter-rouge">.gitlet</code>
+directory.  For example, if you remove a tracked file using the Unix
+<code class="language-plaintext highlighter-rouge">rm</code> command (rather than Gitlet’s command of the same name), it has no
+effect on the next commit, which will still contain the (now deleted)
+version of the file.</p>
+      </li>
+      <li>
+        <p>After the commit command, the new commit is added as a new node
+in the commit tree.</p>
+      </li>
+      <li>
+        <p>The commit just made becomes the “current commit”, and the head
+pointer now points to it. The previous head commit is this
+commit’s parent commit.</p>
+      </li>
+      <li>
+        <p>Each commit should contain the date and time it was made.</p>
+      </li>
+      <li>
+        <p>Each commit has a log message associated with it that describes the
+changes to the files in the commit. This is specified by the
+user. The entire message should take up only one entry in
+the array <code class="language-plaintext highlighter-rouge">args</code> that is passed to <code class="language-plaintext highlighter-rouge">main</code>. To include multiword
+messages, you’ll have to surround them in quotes.</p>
+      </li>
+      <li>
+        <p>Each commit is identified by its SHA-1 id, which must include the
+file (blob) references of its files,
+parent reference, log message, and commit time.</p>
+      </li>
+    </ul>
+  </li>
+  <li>
+    <p><strong>Runtime</strong>: Runtime should be constant with respect to any measure
+of number of commits. Runtime must be no worse than linear with
+respect to the total size of files the commit is tracking.
+Additionally, this command has a memory requirement: Committing must
+increase the size of the <code class="language-plaintext highlighter-rouge">.gitlet</code> directory by no more than the total
+size of the files staged for addition at the time of commit, not including
+additional metadata. This means don’t store redundant copies of
+versions of files that a commit receives from its parent (hint: remember that
+blobs are content addressable and use the SHA1 to your advantage).
+You <em>are</em> allowed to save whole additional copies of files;
+don’t worry about only saving diffs, or anything like that.</p>
+  </li>
+  <li>
+    <p><strong>Failure cases</strong>: If no files have been staged, abort. Print the message <code class="language-plaintext highlighter-rouge">No
+changes added to the commit.</code> Every commit must have a non-blank
+message. If it doesn’t, print the error message <code class="language-plaintext highlighter-rouge">Please enter
+a commit message.</code> It is <em>not</em> a failure for tracked files to be
+missing from the working directory or changed in the working directory.
+Just ignore everything outside the <code class="language-plaintext highlighter-rouge">.gitlet</code> directory entirely.</p>
+  </li>
+  <li>
+    <p><strong>Dangerous?</strong>: No</p>
+  </li>
+  <li>
+    <p><strong>Differences from real git</strong>: In real git, commits may have multiple
+parents (due to merging) and also have considerably more metadata.</p>
+  </li>
+  <li>
+    <p><strong>Our line count</strong>: ~35</p>
+  </li>
+  <li>
+    <p><strong>Suggested Lecture(s)</strong>: Lecture 19 (Sets, Maps, ADTs), Lecture 19 (Hashing)</p>
+  </li>
+</ul>
+
+<p>Here’s a picture of before-and-after commit:</p>
+
+<p><img src="assets/before_and_after_commit.png" alt="Before and after commit"></img></p>
+
+<h4 id="rm">rm</h4>
+
+<ul>
+  <li>
+    <p><strong>Usage</strong>: <code class="language-plaintext highlighter-rouge">gitlet rm [file name]</code></p>
+  </li>
+  <li>
+    <p><strong>Description</strong>: Unstage the file if it is currently staged for addition.
+If the file is tracked in the current commit, stage it for removal and
+remove the file from the working directory if the user has not already done so
+(do <em>not</em> remove it unless it is tracked in the current commit).</p>
+  </li>
+  <li>
+    <p><strong>Runtime</strong>: Should run in constant time relative to any significant measure.</p>
+  </li>
+  <li>
+    <p><strong>Failure cases</strong>: If the file is neither staged nor tracked by the
+head commit, print the error message <code class="language-plaintext highlighter-rouge">No reason to remove the file.</code></p>
+  </li>
+  <li>
+    <p><strong>Dangerous?</strong>: Yes (although if you use our utility methods, you will only
+hurt your repository files, and not all the other files in your
+directory.)</p>
+  </li>
+  <li>
+    <p><strong>Our line count</strong>: ~20</p>
+  </li>
+</ul>
+
+<h4 id="log">log</h4>
+
+<ul>
+  <li>
+    <p><strong>Usage</strong>: <code class="language-plaintext highlighter-rouge">gitlet log</code></p>
+  </li>
+  <li>
+    <p><strong>Description</strong>: Starting at the current head commit, display
+information about each commit backwards along the commit tree until
+the initial commit, following the first parent commit links, ignoring any
+second parents found in merge commits.  (In regular Git, this is what
+you get with <code class="language-plaintext highlighter-rouge">git log --first-parent</code>).
+This set of commit nodes is called the commit’s
+<em>history</em>. For every node in this history, the information it should
+display is the commit id, the time the commit was made, and the
+commit message. Here is an example of the <em>exact</em> format it should
+follow:</p>
+  </li>
+</ul>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>===
+commit a0da1ea5a15ab613bf9961fd86f010cf74c7ee48
+Date: Thu Nov 9 20:00:05 2017 -0800
+A commit message.
+
+===
+commit 3e8bf1d794ca2e9ef8a4007275acf3751c7170ff
+Date: Thu Nov 9 17:01:33 2017 -0800
+Another commit message.
+
+===
+commit e881c9575d180a215d1a636545b8fd9abfb1d2bb
+Date: Wed Dec 31 16:00:00 1969 -0800
+initial commit
+
+</code></pre></div></div>
+
+<p>There is a <code class="language-plaintext highlighter-rouge">===</code> before each commit and an empty line after it.
+  As in real Git, each entry displays the unique SHA-1 id of the commit
+  object. The timestamps displayed in the commits reflect
+  the current timezone, not UTC; as a result, the timestamp for the initial
+  commit does not read Thursday, January 1st, 1970, 00:00:00, but rather the
+  equivalent Pacific Standard Time. Your timezone might be different depending
+  on where you live, and that’s fine.</p>
+
+<p>Display commits with the most recent at the top. For C++17, use <code>std::chrono::system_clock</code> for timestamps and <code>std::localtime</code>/<code>std::strftime</code> or <code>std::put_time</code> for display. Format the weekday/month with <code>%a %b</code>, insert <code>tm_mday</code> as an unpadded integer, and format the remainder with <code>%H:%M:%S %Y %z</code>. Avoid the extra leading space that <code>%e</code> adds to single-digit days, which does not match the supplied test patterns. Keep weekday/month names in English and include the numeric timezone offset. The initial commit's timestamp is the Unix epoch, displayed in the local timezone.</p>
+
+<p>Of course, the SHA1 identifiers are going to be different, so don’t worry
+  about those. Our tests will ensure that you have something that “looks like” a
+  SHA1 identifier (more on that in the testing section below).</p>
+
+<p>For merge commits (those that have two parent commits),
+  add a line just below the first, as in</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>===
+commit 3e8bf1d794ca2e9ef8a4007275acf3751c7170ff
+Merge: 4975af1 2c1ead1
+Date: Sat Nov 11 12:30:00 2017 -0800
+Merged development into master.
+
+</code></pre></div></div>
+
+<p>where the two hexadecimal numerals following “Merge:” consist of the first seven
+  digits of the first and second parents’ commit ids, in that order.  The first
+  parent is the branch you were on when you did the merge; the second is that of
+  the merged-in branch. This is as in regular Git.</p>
+
+<ul>
+  <li>
+    <p><strong>Runtime</strong>: Should be linear with respect to the number of nodes in
+head’s history.</p>
+  </li>
+  <li>
+    <p><strong>Failure cases</strong>: None</p>
+  </li>
+  <li>
+    <p><strong>Dangerous?</strong>: No</p>
+  </li>
+  <li>
+    <p><strong>Our line count</strong>: ~20</p>
+  </li>
+</ul>
+
+<p>Here’s a picture of the history of a particular commit. If the current
+branch’s head pointer happened to be pointing to that commit, log
+would print out information about the circled commits:</p>
+
+<p><img src="assets/history.png" alt="History"></img></p>
+
+<p>The history ignores other branches and the future. Now that we have
+the concept of history, let’s refine what we said earlier about the
+commit tree being immutable. It is immutable precisely in the sense
+that <em>the history of a commit with a particular id may never change,
+ever</em>. If you think of the commit tree as nothing more than a
+collection of histories, then what we’re really saying is that each
+history is immutable.</p>
+
+<h4 id="global-log">global-log</h4>
+
+<ul>
+  <li>
+    <p><strong>Usage</strong>: <code class="language-plaintext highlighter-rouge">gitlet global-log</code></p>
+  </li>
+  <li>
+    <p><strong>Description</strong>: Like log, except displays information about all
+commits ever made. The order of the commits does not matter. Hint: there is a
+useful method in <code class="language-plaintext highlighter-rouge">gitlet.Utils</code> that will help you iterate over files within
+a directory.</p>
+  </li>
+  <li>
+    <p><strong>Runtime</strong>: Linear with respect to the number of commits ever made.</p>
+  </li>
+  <li>
+    <p><strong>Failure cases</strong>: None</p>
+  </li>
+  <li>
+    <p><strong>Dangerous?</strong>: No</p>
+  </li>
+  <li>
+    <p><strong>Our line count</strong>: ~10</p>
+  </li>
+</ul>
+
+<h4 id="find">find</h4>
+
+<ul>
+  <li>
+    <p><strong>Usage</strong>: <code class="language-plaintext highlighter-rouge">gitlet find [commit message]</code></p>
+  </li>
+  <li>
+    <p><strong>Description</strong>: Prints out the ids of all commits that have the given
+commit message, one per line.
+If there are multiple such commits, it prints the
+ids out on separate lines.  The commit message is a single operand; to
+indicate a multiword message, put the operand in quotation marks, as for
+the <code class="language-plaintext highlighter-rouge">commit</code> command below. Hint: the hint for this command is the same as the
+one for <code class="language-plaintext highlighter-rouge">global-log</code>.</p>
+  </li>
+  <li>
+    <p><strong>Runtime</strong>: Should be linear relative to the number of commits.</p>
+  </li>
+  <li>
+    <p><strong>Failure cases</strong>: If no such commit exists, prints the error
+message <code class="language-plaintext highlighter-rouge">Found no commit with that message.</code></p>
+  </li>
+  <li>
+    <p><strong>Dangerous?</strong>: No</p>
+  </li>
+  <li>
+    <p><strong>Differences from real git</strong>: Doesn’t exist in real git. Similar
+effects can be achieved by grepping the output of log.</p>
+  </li>
+  <li>
+    <p><strong>Our line count</strong>: ~15</p>
+  </li>
+</ul>
+
+<h4 id="status">status</h4>
+
+<ul>
+  <li>
+    <p><strong>Usage</strong>: <code class="language-plaintext highlighter-rouge">gitlet status</code></p>
+  </li>
+  <li>
+    <p><strong>Description</strong>: Displays what branches currently exist, and marks
+the current branch with a <code class="language-plaintext highlighter-rouge">*</code>. Also displays what files have been
+staged for addition or removal. An example of the <em>exact</em> format it
+should follow is as follows.</p>
+
+    <div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>=== Branches ===
+*master
+other-branch
+  
+=== Staged Files ===
+wug.txt
+wug2.txt
+  
+=== Removed Files ===
+goodbye.txt
+  
+=== Modifications Not Staged For Commit ===
+junk.txt (deleted)
+wug3.txt (modified)
+  
+=== Untracked Files ===
+random.stuff
+  
+</code></pre></div>    </div>
+
+    <p>The last two sections (modifications not staged and untracked files) are
+optional extensions, as in the original assignment. You may initially leave their contents blank, but always print the section headers.</p>
+
+    <p>There is an empty line between sections, and the entire status ends in an
+empty line as well. List entries in the original Java string-comparison order: lexicographic order of UTF-16 code units. <code>std::string</code> comparison gives the same order for ASCII names; for Unicode names, compare <code>std::filesystem::path(name).u16string()</code> values. The supplied <code>plainFilenamesIn</code> helper already uses this order. The current-branch asterisk does not affect sorting. A file in the
+working directory is “modified but not staged” if it is</p>
+
+    <ul>
+      <li>Tracked in the current commit, changed in the working directory,
+but not staged; or</li>
+      <li>Staged for addition, but with different contents than in the working
+directory; or</li>
+      <li>Staged for addition, but deleted in the working directory; or</li>
+      <li>Not staged for removal, but tracked in the current commit and deleted from
+the working directory.</li>
+    </ul>
+
+    <p>The final category (“Untracked Files”) is for files present in the working
+directory but neither staged for addition nor tracked.  This includes files
+that have been staged for removal, but then re-created without Gitlet’s
+knowledge. Ignore any subdirectories
+that may have been
+introduced, since Gitlet does not deal with them.</p>
+  </li>
+  <li>
+    <p><strong>Runtime</strong>: Make sure this depends only on the amount of data in the
+working directory plus the number of files staged to be added or deleted
+plus the number of branches.</p>
+  </li>
+  <li>
+    <p><strong>Failure cases</strong>: None</p>
+  </li>
+  <li>
+    <p><strong>Dangerous?</strong>: No</p>
+  </li>
+  <li>
+    <p><strong>Our line count</strong>: ~45</p>
+  </li>
+  <li>
+    <p><a href="https://forms.gle/LSgBK5RAdRwhAqKK8"><strong>Conceptual Quiz (without branching)</strong></a></p>
+  </li>
+  <li>
+    <p><a href="https://forms.gle/RHUiRkSrtgysC6En8"><strong>Conceptual Quiz (with branching)</strong></a></p>
+  </li>
+</ul>
+
+<h4 id="checkout">checkout</h4>
+
+<p>Checkout is a kind of general command that can do a few different
+things depending on what its arguments are. There are 3 possible use
+cases. In each section below, you’ll see 3 numbered points. Each
+corresponds to the respective usage of checkout.</p>
+
+<ul>
+  <li>
+    <p><strong>Usages</strong>:</p>
+
+    <ol>
+      <li>
+        <p><code class="language-plaintext highlighter-rouge">gitlet checkout -- [file name]</code></p>
+      </li>
+      <li>
+        <p><code class="language-plaintext highlighter-rouge">gitlet checkout [commit id] -- [file name]</code></p>
+      </li>
+      <li>
+        <p><code class="language-plaintext highlighter-rouge">gitlet checkout [branch name]</code></p>
+      </li>
+    </ol>
+  </li>
+  <li>
+    <p><strong>Descriptions</strong>:</p>
+
+    <ol>
+      <li>
+        <p>Takes the version of the file as it exists in the head commit and puts it
+in the working directory, overwriting the version of the file that’s
+already there if there is one.  The new version of the file is not
+staged.</p>
+      </li>
+      <li>
+        <p>Takes the version of the file as it exists in the commit with
+    the given id, and puts it in the working directory, overwriting
+    the version of the file that’s already there if there is one.
+    The new version of the file is not staged.</p>
+      </li>
+      <li>
+        <p>Takes all files in the commit at the head of the given branch,
+    and puts them in the working directory, overwriting the versions
+    of the files that are already there if they exist. Also, at the
+    end of this command, the given branch will now be considered the
+    current branch (HEAD).  Any files that are tracked in the current
+    branch but are not present in the checked-out branch are deleted.
+    The staging area is cleared, unless the checked-out branch is the
+    current branch (see <strong>Failure cases</strong> below).</p>
+      </li>
+    </ol>
+  </li>
+  <li>
+    <p><strong>Runtimes</strong>:</p>
+
+    <ol>
+      <li>
+        <p>Should be linear relative to the size of the file being checked out.</p>
+      </li>
+      <li>
+        <p>Should be linear with respect to the total size of the files in
+    the commit’s snapshot. Should be constant with respect to any
+    measure involving number of commits. Should be constant with
+    respect to the number of branches.</p>
+      </li>
+    </ol>
+  </li>
+  <li>
+    <p><strong>Failure cases</strong>:</p>
+
+    <ol>
+      <li>
+        <p>If the file does not exist in the previous commit, abort,
+    printing the error message <code class="language-plaintext highlighter-rouge">File does not exist in that
+    commit.</code> Do not change the CWD.</p>
+      </li>
+      <li>
+        <p>If no commit with the given id exists, print <code class="language-plaintext highlighter-rouge">No commit with
+    that id exists.</code> Otherwise, if the file does not exist in the given
+    commit, print the same message as for failure case 1. Do not change the
+    CWD.</p>
+      </li>
+      <li>
+        <p>If no branch with that name exists, print <code class="language-plaintext highlighter-rouge">No such branch exists.</code>
+If that branch is the current branch, print <code class="language-plaintext highlighter-rouge">No need to checkout the
+    current branch.</code>  If a working file is untracked in the current
+    branch and would be overwritten by the checkout, print
+    <code class="language-plaintext highlighter-rouge">There is an untracked file in the way; delete it, or add and commit it
+    first.</code> and exit; perform this check before doing anything else. Do not
+    change the CWD.</p>
+      </li>
+    </ol>
+  </li>
+  <li>
+    <p><strong>Differences from real git</strong>: Real git does not clear the staging area
+and stages the file that is checked out.
+Also, it won’t do a checkout that would overwrite or undo changes (additions
+or removals) that you have staged.</p>
+  </li>
+</ul>
+
+<p>A <code class="language-plaintext highlighter-rouge">[commit id]</code> is, as described earlier, a hexadecimal numeral.  A convenient
+feature of real Git is that one can abbreviate commits with a unique
+prefix.  For example, one can abbreviate</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>a0da1ea5a15ab613bf9961fd86f010cf74c7ee48
+</code></pre></div></div>
+<p>as</p>
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>a0da1e
+</code></pre></div></div>
+<p>in the (likely) event that no other object exists with a SHA-1 identifier that
+starts with the same six digits.  You should arrange for the same thing to
+happen for commit ids that contain fewer than 40 characters.  Unfortunately,
+using shortened ids might slow down the finding of objects if implemented
+naively (making the time to find a file linear in the number of objects), so
+we won’t worry about timing for commands that use shortened ids.  We suggest,
+however, that you poke around in a <code class="language-plaintext highlighter-rouge">.git</code> directory (specifically,
+<code class="language-plaintext highlighter-rouge">.git/objects</code>) and see how it manages to speed up its search. You will perhaps
+recognize a familiar data structure implemented with the file system rather
+than pointers.</p>
+
+<p>Only version 3 (checkout of a full branch) modifies the staging area:
+otherwise files scheduled for
+addition or removal remain so.</p>
+
+<ul>
+  <li>
+    <p><strong>Dangerous?</strong>: Yes!</p>
+  </li>
+  <li>
+    <p><strong>Our line counts</strong>:</p>
+
+    <ul>
+      <li>~15</li>
+      <li>~5</li>
+      <li>~15</li>
+    </ul>
+  </li>
+  <li>
+    <p><a href="https://forms.gle/mfHLnrU9VX349jnr7"><strong>Conceptual Quiz (without branching)</strong></a></p>
+  </li>
+  <li>
+    <p><a href="https://forms.gle/tbZuqDz7x3u41JhM6"><strong>Conceptual Quiz (with branching)</strong></a></p>
+  </li>
+</ul>
+
+<h4 id="branch">branch</h4>
+
+<ul>
+  <li>
+    <p><strong>Usage</strong>: <code class="language-plaintext highlighter-rouge">gitlet branch [branch name]</code></p>
+  </li>
+  <li>
+    <p><strong>Description</strong>: Creates a new branch with the given name, and
+points it at the current head commit. A branch is nothing more than a
+name for a reference (a SHA-1 identifier)
+to a commit node. This command does NOT immediately switch to the newly
+created branch (just as in real Git).
+Before you
+ever call branch, your code should be running with a default branch
+called “master”.</p>
+  </li>
+  <li>
+    <p><strong>Runtime</strong>: Should be constant relative to any significant measure.</p>
+  </li>
+  <li>
+    <p><strong>Failure cases</strong>: If a branch with the given name already exists,
+print the error message <code class="language-plaintext highlighter-rouge">A branch with that name already exists.</code></p>
+  </li>
+  <li>
+    <p><strong>Dangerous?</strong>: No</p>
+  </li>
+  <li>
+    <p><strong>Our line count</strong>: ~10</p>
+  </li>
+</ul>
+
+<p>All right, let’s see what branch does in detail. Suppose our state
+looks like this:</p>
+
+<p><img src="assets/simple_history.png" alt="Simple history"></img></p>
+
+<p>Now we call <code class="language-plaintext highlighter-rouge">gitlet branch cool-beans</code>. Then we get this:</p>
+
+<p><img src="assets/just_called_branch.png" alt="Just called branch"></img></p>
+
+<p>Hmm… nothing much happened. Let’s switch to the branch with <code class="language-plaintext highlighter-rouge">gitlet
+checkout cool-beans</code>:</p>
+
+<p><img src="assets/just_switched_branch.png" alt="Just switched branch"></img></p>
+
+<p>Nothing much happened again?! Okay, say we make a commit now. Modify
+some files, then <code class="language-plaintext highlighter-rouge">gitlet add...</code> then <code class="language-plaintext highlighter-rouge">gitlet commit...</code></p>
+
+<p><img src="assets/commit_on_branch.png" alt="Commit on branch"></img></p>
+
+<p>I was told there would be branching. But all I see is a straight line.
+What’s going on? Maybe I should go back to my other branch with <code class="language-plaintext highlighter-rouge">gitlet checkout master</code>:</p>
+
+<p><img src="assets/checkout_master.png" alt="Checkout master"></img></p>
+
+<p>Now I make a commit…</p>
+
+<p><img src="assets/branched.png" alt="Branched"></img></p>
+
+<p>Phew! So that’s the whole idea of branching. Did you catch what’s
+going on? All that creating a branch does is to give us a new pointer. At any
+given time, one of these pointers is considered the currently active
+pointer, also called the HEAD pointer (indicated by *). We can switch the
+currently active head pointer with <code class="language-plaintext highlighter-rouge">checkout [branch name]</code>. Whenever
+we commit, it means we add a child commit to the currently active HEAD commit
+even if there is already a child commit. This naturally creates branching
+behavior as a commit can now have multiple children.</p>
+
+<p>A video example and overview of branching can be found <a href="https://youtu.be/desB3AS6aZg">here</a></p>
+
+<p>Make <em>sure</em> that the behavior of your <code class="language-plaintext highlighter-rouge">branch</code>, <code class="language-plaintext highlighter-rouge">checkout</code>, and
+<code class="language-plaintext highlighter-rouge">commit</code> match what we’ve described above. This is pretty core
+functionality of Gitlet that many other commands will depend upon. If
+any of this core functionality is broken, tests of many later commands will fail!</p>
+
+<h4 id="rm-branch">rm-branch</h4>
+
+<ul>
+  <li>
+    <p><strong>Usage</strong>: <code class="language-plaintext highlighter-rouge">gitlet rm-branch [branch name]</code></p>
+  </li>
+  <li>
+    <p><strong>Description</strong>: Deletes the branch with the given name. This only
+means to delete the pointer associated with the branch; it does not
+mean to delete all commits that were created under the branch, or
+anything like that.</p>
+  </li>
+  <li>
+    <p><strong>Runtime</strong>: Should be constant relative to any significant measure.</p>
+  </li>
+  <li>
+    <p><strong>Failure cases</strong>: If a branch with the given name does not exist,
+aborts. Print the error message <code class="language-plaintext highlighter-rouge">A branch with that name does not
+exist.</code> If you try to remove the branch you’re currently on, aborts,
+printing the error message <code class="language-plaintext highlighter-rouge">Cannot remove the current branch.</code></p>
+  </li>
+  <li>
+    <p><strong>Dangerous?</strong>: No</p>
+  </li>
+  <li>
+    <p><strong>Our line count</strong>: ~15</p>
+  </li>
+</ul>
+
+<h4 id="reset">reset</h4>
+
+<ul>
+  <li>
+    <p><strong>Usage</strong>: <code class="language-plaintext highlighter-rouge">gitlet reset [commit id]</code></p>
+  </li>
+  <li>
+    <p><strong>Description</strong>: Checks out all the files tracked by the given
+commit. Removes tracked files that are not present in that commit.
+Also moves the current branch’s head to that commit node.
+See the intro for an example of what happens to the head pointer
+after using reset.  The <code class="language-plaintext highlighter-rouge">[commit id]</code> may be abbreviated as for
+<code class="language-plaintext highlighter-rouge">checkout</code>.  The staging area is cleared.  The command is essentially
+<code class="language-plaintext highlighter-rouge">checkout</code> of an arbitrary commit that also changes the current branch
+head.</p>
+  </li>
+  <li>
+    <p><strong>Runtime</strong>: Should be linear with respect to the total size of
+files tracked by the given commit’s snapshot. Should be constant
+with respect to any measure involving number of commits.</p>
+  </li>
+  <li><strong>Failure case</strong>: If no commit with the given id exists, print <code class="language-plaintext highlighter-rouge">No
+commit with that id exists.</code>  If a working file is untracked in the current
+branch and would be overwritten by the reset, print
+    <change>`There is an untracked file in the way; delete it, or add and commit it first.`</change>
+    <p>and exit;
+perform this check before doing anything else.</p>
+  </li>
+  <li>
+    <p><strong>Dangerous?</strong>: Yes!</p>
+  </li>
+  <li>
+    <p><strong>Differences from real git</strong>: This command is
+closest to using the <code class="language-plaintext highlighter-rouge">--hard</code> option, as in <code class="language-plaintext highlighter-rouge">git reset --hard [commit
+hash]</code>.</p>
+  </li>
+  <li><strong>Our line count</strong>: ~10 How did we get such a small line count? Recall that
+  you should reuse your code :)</li>
+</ul>
+
+<h4 id="merge">merge</h4>
+
+<ul>
+  <li>
+    <p><strong>Usage</strong>: <code class="language-plaintext highlighter-rouge">gitlet merge [branch name]</code></p>
+  </li>
+  <li>
+    <p><strong>Description</strong>: Merges files from the given branch into the current
+branch. This method is a bit complicated, so here’s a more detailed
+description:</p>
+
+    <ul>
+      <li>First consider what we call the <strong>split point</strong> of the
+current branch and the given branch.
+For example, if <code class="language-plaintext highlighter-rouge">master</code> is the current branch and <code class="language-plaintext highlighter-rouge">branch</code> is the given
+branch:
+<img src="assets/split_point.png" alt="Split point"></img>
+The split point is a <em>latest common ancestor</em> of the current and given
+branch heads:
+    - A <em>common ancestor</em> is a commit to which there is a path
+      (of 0 or more parent pointers) from both branch heads.
+    - A <em>latest</em> common ancestor is a common ancestor that is not an
+      ancestor of any other common ancestor.
+For example, although the leftmost commit in the diagram above is a
+common ancestor of <code class="language-plaintext highlighter-rouge">master</code> and <code class="language-plaintext highlighter-rouge">branch</code>, it is also an ancestor of the
+commit immediately to its right, so it is not a latest common
+ancestor.
+If the split point <em>is</em> the same commit as the given branch, then
+we do nothing; the merge is complete, and the operation ends with the
+message <code class="language-plaintext highlighter-rouge">Given branch is an ancestor of the current branch.</code>
+If the split point is the current branch, then the effect is to
+check out the given branch, and the operation
+ends after printing the message <code class="language-plaintext highlighter-rouge">Current branch fast-forwarded.</code>
+Otherwise, we continue
+with the steps below.</li>
+    </ul>
+
+    <ol>
+      <li>
+        <p>Any files that have been <em>modified</em> in the given branch since
+    the split point, but not modified in the current branch since
+    the split point should be changed to their versions in the given
+    branch (checked out from the commit at the front of the given
+    branch). These files should then all be automatically staged.
+    To clarify, if a file is “modified in the given branch since the
+    split point” this means the version of the file as it exists in
+    the commit at the front of the given branch has different
+    content from the version of the file at the split point. Remember: blobs
+    are content addressable!</p>
+      </li>
+      <li>
+        <p>Any files that have been modified in the current branch but not
+    in the given branch since the split point should stay as they
+    are.</p>
+      </li>
+      <li>
+        <p>Any files that have been modified in both the current and
+    given branch in the same way (i.e., both files now have the same
+    content or were both removed) are left unchanged by the merge.
+    If a file was removed from both the current and given branch, but a file
+    of the same name is present in the working directory, it is left alone and
+    continues to be absent (not tracked nor staged) in the merge.</p>
+      </li>
+      <li>
+        <p>Any files that were not present at the split point and are
+    present only in the current branch should remain as they are.</p>
+      </li>
+      <li>
+        <p>Any files that were not present at the split point and are
+    present only in the given branch should be checked out and
+    staged.</p>
+      </li>
+      <li>
+        <p>Any files present at the split point, unmodified in the current
+    branch, and absent in the given branch should be removed (and untracked).</p>
+      </li>
+      <li>
+        <p>Any files present at the split point, unmodified in the given branch,
+    and absent in the current branch should remain absent.</p>
+      </li>
+      <li>
+        <p>Any files modified in different ways
+    in the current and given branches are <em>in conflict</em>.  “Modified in
+    different ways” can mean that the contents of both are changed and
+    different from other, or the contents of one are changed and the other
+    file is deleted, or the file was absent at the split point
+    and has different
+    contents in the given and current branches.  In this case, replace
+    the contents of the conflicted file with</p>
+      </li>
+    </ol>
+  </li>
+</ul>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD
+contents of file in current branch
+=======
+contents of file in given branch
+&gt;&gt;&gt;&gt;&gt;&gt;&gt;
+</code></pre></div></div>
+
+<p>(replacing “contents of…” with the indicated file’s contents) and stage the
+result.  Treat a deleted file in a branch as an empty file.  Use straight
+concatenation here.  In the case of a file with no newline at the end, you might
+well end up with something like this:</p>
+
+<div class="language-plaintext highlighter-rouge"><div class="highlight"><pre class="highlight"><code>&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD
+contents of file in current branch=======
+contents of file in given branch&gt;&gt;&gt;&gt;&gt;&gt;&gt;
+</code></pre></div></div>
+
+<p>This is fine; people who produce non-standard, pathological files
+because they don’t know the difference between a line terminator
+and a line separator deserve what they get.</p>
+
+<p>Once files have been updated according to the above, and the split point was not
+the current branch or the given branch, merge automatically commits with the log
+message <code class="language-plaintext highlighter-rouge">Merged [given branch name] into [current branch name].</code> Then, if the
+merge encountered a conflict, print the message <code class="language-plaintext highlighter-rouge">Encountered a merge conflict.</code>
+on the terminal (not the log).  Merge commits differ from other commits: they
+record as parents both the head of the current branch (called the <em>first
+parent</em>) and the head of the branch given on the command line to be merged in.</p>
+
+<p>A video walkthrough of this command can be found <a href="https://www.youtube.com/watch?v=JR3OYCMv9b4&amp;t=929s">here</a>.</p>
+
+<p>By the way, we hope you’ve noticed that the set of commits has progressed
+  from a simple sequence to a tree and now, finally, to a full
+  directed acyclic graph.</p>
+
+<ul>
+  <li>
+    <p><strong>Runtime</strong>: $O(N\lg N + D)$, where $N$ is the total number
+of ancestor commits for the two branches and $D$ is the total amount of
+data in all the files under these commits.</p>
+  </li>
+  <li>
+    <p><strong>Failure cases</strong>: If there are staged additions or removals present,
+print the error message <code class="language-plaintext highlighter-rouge">You have uncommitted changes.</code> and exit.
+If a branch with the given name does not exist,
+print the error message <code class="language-plaintext highlighter-rouge">A branch with that name does not exist.</code> If
+attempting to merge a branch with itself, print the error message
+<code class="language-plaintext highlighter-rouge">Cannot merge a branch with itself.</code> If merge would generate an
+error because the commit that it does has no changes in it, just let
+the normal commit error message for this go through.
+If an untracked file in the current commit would be overwritten or deleted by the merge, print
+<code class="language-plaintext highlighter-rouge">There is an untracked file in the way; delete it, or add and commit it first.</code> and
+exit; perform this check before doing anything else.</p>
+  </li>
+  <li>
+    <p><strong>Dangerous?</strong>: Yes!</p>
+  </li>
+  <li>
+    <p><strong>Differences from real git</strong>:
+Real Git does a more subtle job of merging files, displaying conflicts only
+in places where both files have changed since the split point.</p>
+
+    <p>Real Git has a different way to decide which of multiple possible split
+points to use.</p>
+
+    <p>Real Git will force the user to resolve the merge
+conflicts before committing to complete the merge. Gitlet just
+commits the merge, conflicts and all, so that you must use a separate
+commit to resolve problems.</p>
+
+    <p>Real Git will complain if there are unstaged changes to a file that
+would be changed by a merge.  You may do so as well if you want, but we
+will not test that case.</p>
+  </li>
+  <li>
+    <p><strong>Our line count</strong>: ~70</p>
+  </li>
+  <li>
+    <p><a href="https://forms.gle/Gu4FcFf1kfC7HYBa6"><strong>Conceptual Quiz</strong></a></p>
+  </li>
+  <li>
+    <p><strong>Suggested Lecture(s)</strong>: Lecture 19 (Sets, Maps, ADTs), Lecture 22 (Graph Traversal)</p>
+  </li>
+</ul>
+
+
+
+
+
+
+<h2 id="design-document">Design document and checkpoints</h2>
+<p>Fill in <a href="gitlet-design.md">gitlet-design.md</a> before implementing commands. Describe responsibilities, data structures, ownership, on-disk representation, and the operations used by each command. Update it as your design changes.</p>
+<ol><li>Complete Capers; verify state survives separate invocations.</li><li>Design the repository layout, commit representation, and deterministic encoding. Implement init and inspect its files.</li><li>Implement add, commit, log, and file checkout. Use the four original samples to check this milestone.</li><li>Implement removal, find, global-log, status, branches, branch checkout, and reset. Add your own .in tests.</li><li>Implement merge, including two-parent history, split-point selection, deletion cases, fast-forward cases, and conflict output.</li><li>Optionally implement <a href="#dear-imgui-extension">the Dear ImGui GUI</a> or <a href="#going-remote-extra-credit">local remotes</a>. These are independent extensions; neither is a prerequisite for the other. You can begin the viewer once the commands it displays work.</li></ol>
+<p>The provided samples cover only a small part of Gitlet. Passing all four is a milestone, not proof that the full project is correct. Expand tests for every failure case and interactions across commands. Historical deadlines, grading weights, snaps repositories, and submission services do not apply to this self-study port.</p>
+<h2 id="dealing-with-files">Files and directories in C++</h2>
+<pre><code>#include &lt;filesystem&gt;
+#include "Utils.hpp"
+namespace fs = std::filesystem;
+
+fs::path cwd = fs::current_path();
+fs::path metadata = cwd / ".gitlet";
+bool initialized = fs::is_directory(metadata);
+// Creating directories belongs in your initialization logic:
+// fs::create_directories(metadata);</code></pre>
+<p>A path is a value describing a location; constructing one does not create a file. Use <code>/</code> to join paths and filesystem functions to create/check directories. File helpers do not create missing parent directories for you. Read and write files as exact bytes: <code>std::string</code> may contain NULs, so use its length rather than strlen.</p>
+<table><tr><th>Helper in gitlet::utils</th><th>Contract</th></tr>
+<tr><td><code>sha1(bytes)</code>, <code>sha1({part1, part2})</code></td><td>40 lowercase hexadecimal characters; hashes the concatenated bytes.</td></tr>
+<tr><td><code>readContents(path)</code>, <code>readContentsAsString(path)</code></td><td>Read the whole regular file as a binary string. Missing/non-file paths throw.</td></tr>
+<tr><td><code>writeContents(path, bytes)</code>, <code>writeContents(path, {parts...})</code></td><td>Create or replace a file with exactly these bytes. Parent directory must exist.</td></tr>
+<tr><td><code>plainFilenamesIn(dir)</code></td><td>Regular filenames in Java's UTF-16 lexicographic order; directories excluded. Invalid directories or filenames that cannot be converted to UTF-16 throw.</td></tr>
+<tr><td><code>restrictedDelete(path)</code></td><td>Refuses deletion unless the parent contains .gitlet. Never deletes a directory. Still implement the command's untracked-file protections yourself.</td></tr>
+</table>
+<h2 id="serialization-details">Explicit object serialization</h2>
+<p>C++ does not automatically serialize class fields. Never write <code>sizeof(object)</code> bytes from an object's address: strings and containers contain implementation details and memory addresses. Instead, encode the logical values and reconstruct them when loading.</p>
+<p>Choose and document a format. Text is fine if escaping and field boundaries are unambiguous. Alternatively, the provided <code>BinaryWriter</code> and <code>BinaryReader</code> offer two primitives:</p>
+<ul><li><code>writeUint64(value)</code> / <code>readUint64()</code>: an unsigned integer in eight bytes, most significant byte first.</li><li><code>writeString(value)</code> / <code>readString()</code>: an eight-byte byte-count followed by that many bytes, including embedded NULs.</li><li><code>writer.bytes()</code> returns the accumulated bytes; <code>reader.requireEnd()</code> rejects trailing data. Short or invalid lengths throw.</li></ul>
+<pre><code>// Generic codec example, not a commit format:
+gitlet::utils::BinaryWriter writer;
+writer.writeString("a note with spaces");
+writer.writeUint64(3);
+
+gitlet::utils::BinaryReader reader(writer.bytes());
+std::string text = reader.readString();
+auto count = reader.readUint64();
+reader.requireEnd();</code></pre>
+<p>Optional templates <code>serialize(object)</code>, <code>writeObject(path, object)</code>, and <code>readObject&lt;T&gt;(path)</code> work only after you provide <code>std::string T::serialize() const</code> and <code>static T T::deserialize(const std::string&amp;)</code> (or a compatible signature). They do not choose fields or inspect a class. The commit class intentionally leaves these decisions to you.</p>
+<p>Object IDs must be deterministic. Encode the same logical object identically every time; hash the exact bytes you persist. Use a fixed field order and deterministic ordering for maps (for example, std::map or sorted keys). Hash all required metadata and references. Distinguish object kinds in your layout or encoding. Store parent/blob references as IDs so loading one commit does not load the full history or every file's contents.</p>
+<p>Use <code>build/dumpobj PATH</code> to inspect a file's bytes and readable characters. For a structured view, implement your own decoder and optionally the <code>Dumpable::dump(std::ostream&amp;)</code> interface. The byte viewer cannot infer your schema.</p>
+<h2 id="testing">Building and testing</h2>
+<pre><code># In proj2:
+make
+make check
+make check TESTER_FLAGS="--show=all --verbose"
+
+# Run a single assignment test:
+cd testing
+python3 tester.py --show=all samples/test01-init.in
+python3 runner.py --show=all samples/test02-basic-checkout.in
+python3 tester.py --keep --verbose samples/test03-basic-log.in</code></pre>
+<p>Compile before invoking the runner directly. <code>runner.py</code> and <code>tester.py</code> are equivalent entry points. They locate <code>build/gitlet</code> relative to the script, so no classpath, REPO_DIR, Java libraries, or external staff solution is needed. To test a different executable, pass <code>--program /absolute/path/to/gitlet</code>.</p>
+<p>Useful options: <code>--show=N</code> or <code>--show=all</code> prints failing test source; <code>--keep</code> retains generated directories; <code>--verbose</code> displays directives/output; <code>--timeout=SECONDS</code> sets the per-invocation limit; <code>--src=DIR</code> selects fixture files. Output tolerance defaults to zero. <code>--tolerance=N</code> is available for exploratory use, but keep it zero for acceptance checks.</p>
+<p>Each command in a test launches a fresh process. Specified user errors should print their expected message and return 0. A crash, nonzero exit, timeout, missing fixture, or mismatched output fails the test. No tests matched is an error, not success. The adapter compares file bytes exactly, including line endings. Paths to the executable and test directories may contain spaces.</p>
+<h2 id="understanding-integration-tests">Writing .in integration tests</h2>
+<p>The original samples and both <code>definitions.inc</code> files are unchanged. The test language supports:</p>
+<pre><code># A comment
+I definitions.inc         # Include syntax uses a whole line: I FILE
+C other                   # Switch to/create a test subdirectory; C alone returns
+T 10                      # Set command timeout in seconds
++ working.txt fixture.txt # Copy src/fixture.txt to working.txt
+- working.txt             # Remove a working file
+E .gitlet                 # Require a file/directory to exist
+* absent.txt              # Require a path not to exist
+= working.txt fixture.txt # Compare working file with fixture bytes
+D NAME "some value"       # Define a substitution variable</code></pre>
+<p>The comments above explain the syntax; actual directives must be written on their own lines without trailing comments. The simple file directives use whitespace-separated names. Command lines support quoted operands containing spaces.</p>
+<pre><code>&gt; commit "message with spaces"
+&lt;&lt;&lt;
+
+&gt; status
+EXPECTED OUTPUT HERE
+&lt;&lt;&lt;</code></pre>
+<p>An empty expected-output block means silence is required. End the block with <code>&lt;&lt;&lt;*</code> to interpret it as a Python regular expression. <code>${NAME}</code> expands a variable; <code>${1}</code>, <code>${2}</code>, etc. refer to capture groups from the previous command's expected-output regex. Capture 0 is the full output. Copy a capture into a named variable before another command replaces it.</p>
+<pre><code>I definitions.inc
+&gt; init
+&lt;&lt;&lt;
+E .gitlet
+&gt; log
+===
+${COMMIT_HEAD}
+initial commit
+
+&lt;&lt;&lt;*
+D INITIAL_ID "${1}"
+# INITIAL_ID now holds the generated commit hash.</code></pre>
+<p>Commands are split using shell-style quoting and passed directly to the executable. Shell expansion, pipes, redirections, and command substitutions are not evaluated by the runner. Use +, -, and fixture files to prepare filesystem state.</p>
+<h2 id="debugging-integration-tests">Debugging C++</h2>
+<p>The default build includes debug symbols and disables optimization. Run a failing test with <code>--keep --verbose</code>, then inspect the printed directory and the command that failed. Replaying a command can mutate state; rerun the fixture if you need a fresh reproduction.</p>
+<pre><code># Save the executable path while in proj2:
+gitlet_executable="$(pwd)/build/gitlet"
+# Change into the exact test directory printed by --keep:
+cd "testing/TEST-DIRECTORY-PRINTED-BY-RUNNER"
+lldb -- "$gitlet_executable" COMMAND OPERAND
+# Inside LLDB:
+# breakpoint set --name main
+# run
+# next
+# step
+# frame variable</code></pre>
+<p>On Linux, the analogous launch is <code>gdb --args /absolute/path/to/gitlet COMMAND OPERAND</code>. There is no JVM remote-debugging mode. Optionally rebuild with memory/undefined-behavior checks:</p>
+<pre><code>make clean
+make CXXFLAGS="-std=c++17 -Wall -Wextra -Wpedantic -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer"
+# Clean again before returning to ordinary build flags.</code></pre>
+<h2 id="dear-imgui-extension">Optional extension: Dear ImGui GUI</h2>
+<p>Build a small C++ desktop application with <a href="https://github.com/ocornut/imgui">Dear ImGui</a> to explore the repository you implemented. See how commits connect, which commit each branch points to, what is staged, and which files belong to a saved snapshot. This is an optional self-study extension to the C++ port, beyond the original Java assignment. The GUI described here is a project to implement; it is not included in the starter.</p>
+<p>Start once init, add, commit, log, and status work. Add branch and merge visualization as those commands become available. Keep the CLI executable and its specified behavior working throughout.</p>
+
+<h3 id="imgui-viewer">First milestone: a repository viewer</h3>
+<p>Begin with one window that opens a Gitlet working directory and displays its current state. A path text field and an Open button are sufficient; a native file picker is optional. Opening a directory without <code>.gitlet</code> should show an explanatory message without creating a repository.</p>
+<table>
+<tr><th>Area</th><th>What to show</th></tr>
+<tr><td>Branches</td><td>Branch names and their commit IDs, with the current branch and HEAD clearly marked.</td></tr>
+<tr><td>Commit graph</td><td>A node per commit reachable from the branch tips, with connections to its parents. Include both parents of a merge commit. Use short IDs and messages as labels; clicking a node selects it.</td></tr>
+<tr><td>Commit details</td><td>The selected commit's full ID, message, timestamp, parent IDs, and tracked filenames. Selecting a file displays its saved contents from that commit. Display binary data as bytes or a binary-file notice.</td></tr>
+<tr><td>Staging</td><td>Files staged for addition and removal, using the same repository state as CLI status.</td></tr>
+</table>
+<p>Browsing and selecting items must leave repository and working files unchanged. Add a Refresh button so changes made through the CLI become visible. Keep selection by commit ID when refreshing, and handle selections that no longer exist.</p>
+<p>A commit graph is a directed acyclic graph: merges can have two parents, and several branches can share an ancestor. Traverse both parent links, visit each commit once, and use a stable layout such as rows and branch lanes. The graph layout and selection behavior are your work. Dear ImGui supplies drawing and interaction tools, not a Gitlet graph viewer.</p>
+
+<h3 id="imgui-setup">Set up Dear ImGui</h3>
+<p>Use the official <a href="https://github.com/ocornut/imgui/wiki/Getting-Started">Getting Started guide</a> and <a href="https://github.com/ocornut/imgui/blob/master/docs/EXAMPLES.md">example applications</a>. A suitable starting point for this C++ project is <a href="https://github.com/ocornut/imgui/tree/master/examples/example_glfw_opengl3">example_glfw_opengl3</a>: GLFW provides the window and input, and OpenGL renders the interface. Follow its <a href="https://github.com/ocornut/imgui/blob/master/examples/example_glfw_opengl3/Makefile">platform build instructions</a> to run the demo before connecting Gitlet.</p>
+<p>Keep the example's window setup, event loop, and Dear ImGui backends. Use <code>ImGui::ShowDemoWindow()</code> and <code>imgui_demo.cpp</code> to learn lists, tables, text inputs, and selectable items. For the graph, start with circles, lines, labels, and click handling on a drawing area. Basic panels are enough for the first version.</p>
+<p>When implementing the extension, add a separate GUI executable and an explicit build target, for example <code>make gui</code> producing <code>build/gitlet-gui</code>. These names are proposed targets to create, not commands supplied by the current Makefile. Keep GUI sources outside <code>gitlet/*.cpp</code>, which the existing CLI build includes automatically. Give each executable its own entry point, and link the GUI to the shared repository sources without linking either CLI Main.cpp or DumpObj.cpp. Ordinary <code>make</code> and <code>make check</code> should continue to work without GUI dependencies.</p>
+
+<h3 id="imgui-shared-core">Connect both interfaces to the same repository code</h3>
+<p>Expose repository operations and queries as ordinary C++ methods. The CLI formats results as the assignment requires; the GUI displays the same data in widgets. Use your existing decoding and file-access code to read <code>.gitlet</code>. Dear ImGui does not interpret the storage format.</p>
+<p>The current Repository constructor uses the process's working directory. For the GUI, allow the shared repository layer to accept an explicit working-directory path while retaining the CLI's current-directory default. Resolve working files and <code>.gitlet</code> relative to that selected directory, independently of where the GUI executable was launched.</p>
+<p>Keep interface state, such as a selected commit, graph scroll position, and message input, separate from saved repository state. Load a snapshot when opening or refreshing the view, and refresh after a successful action. Rebuilding the interface each frame must not repeat file writes or reload the whole history. Display filenames and commit messages as literal text, not as printf-style format strings; use commit IDs as stable widget identifiers.</p>
+
+<h3 id="imgui-actions">Later milestone: command buttons</h3>
+<p>After the viewer works, add Stage, Commit, Checkout Branch, Create Branch, and Merge controls as their corresponding CLI operations are completed. A button press should call the same repository method once. Catch specified errors at the GUI boundary, display their messages, and keep the application open. Preserve the CLI's validation, untracked-file protections, persistence, and merge-conflict behavior. Refresh the panels after operations change state.</p>
+<p>File diffs, a conflict editor, and rearrangeable panels are possible later additions. The first complete extension is the small repository viewer above.</p>
+
+<h3 id="imgui-completion">Checking the extension</h3>
+<p>Use a scratch repository to create a few commits, a branch, and eventually a merge. Confirm that the viewer shows the correct parent connections, branch tips, staged files, and saved file contents. Make a change through the CLI and verify that Refresh picks it up. Close and reopen the GUI to verify that it loads persisted state. If you add command buttons, check their results through the CLI as well, including a rejected checkout that would overwrite an untracked file. Continue using the existing assignment tests for the shared Gitlet logic.</p>
+
+<h2 id="going-remote-extra-credit">Optional extension: local remotes</h2>
+<p>Implement these only after the required commands. As in the original assignment, a remote is another .gitlet directory accessible on the filesystem. Networking, authentication, and interoperability with real Git are outside scope. These are optional self-study extensions.</p>
+<h2 id="the-commands-1">The Commands</h2>
+
+<p>A few notes about the remote commands:</p>
+
+<ul>
+  <li>
+    <p>Execution time will not be graded. For your own edification, please don’t
+do anything ridiculous, though.</p>
+  </li>
+  <li>
+    <p>All the commands are significantly simplified from their git
+equivalents, so specific differences from git are usually not
+notated. Be aware they are there, however.</p>
+  </li>
+</ul>
+
+<p>So now let’s go over the commands:</p>
+
+<h4 id="add-remote">add-remote</h4>
+
+<ul>
+  <li>
+    <p><strong>Usage</strong>: <code class="language-plaintext highlighter-rouge">gitlet add-remote [remote name] [name of remote directory]/.gitlet</code></p>
+  </li>
+  <li>
+    <p><strong>Description</strong>: Saves the given login information under the given
+remote name. Attempts to push or pull from the given remote name
+will then attempt to use this <code class="language-plaintext highlighter-rouge">.gitlet</code> directory.
+By writing, e.g.,
+    gitlet add-remote other ../testing/otherdir/.gitlet
+you can provide tests of remotes that will work from all
+locations on your machine or in a test directory.
+Always use forward slashes in these commands. Have your program convert
+all the forward slashes into the path separator character (forward slash on
+Unix and backslash on Windows).  Construct a <code>std::filesystem::path</code> from the supplied path; use its native path operations rather than hard-coded separators.</p>
+  </li>
+  <li>
+    <p><strong>Failure cases</strong>: If a remote with the given name already exists,
+print the error message: <code class="language-plaintext highlighter-rouge">A remote with that name already exists.</code>
+You don’t have to check if the user name and server
+information are legit.</p>
+  </li>
+  <li>
+    <p><strong>Dangerous?</strong>: No.</p>
+  </li>
+</ul>
+
+<h4 id="rm-remote">rm-remote</h4>
+
+<ul>
+  <li>
+    <p><strong>Usage</strong>: <code class="language-plaintext highlighter-rouge">gitlet rm-remote [remote name]</code></p>
+  </li>
+  <li>
+    <p><strong>Description</strong>: Remove information associated with the given remote
+name. The idea here is that if you ever wanted to change a remote
+that you added, you would have to first remove it and then re-add
+it.</p>
+  </li>
+  <li>
+    <p><strong>Failure cases</strong>: If a remote with the
+given name does not exist, print the error message: <code class="language-plaintext highlighter-rouge">A remote with
+that name does not exist.</code></p>
+  </li>
+  <li>
+    <p><strong>Dangerous?</strong>: No.</p>
+  </li>
+</ul>
+
+<h4 id="push">push</h4>
+
+<ul>
+  <li>
+    <p><strong>Usage</strong>: <code class="language-plaintext highlighter-rouge">gitlet push [remote name] [remote branch name]</code></p>
+  </li>
+  <li>
+    <p><strong>Description</strong>: Attempts to append the current branch’s commits to
+the end of the given branch at the given remote. Details:</p>
+
+    <p>This command only works if the remote branch’s head is in the
+history of the current local head, which means that the local
+branch contains some commits in the future of the remote branch.
+In this case, append the future commits to the remote branch.
+Then, the remote should reset to the front of the appended
+commits (so its head will be the same as the local head). This
+is called fast-forwarding.</p>
+
+    <p>If the Gitlet system on the remote machine exists but does not
+have the input branch, then simply add the branch to the remote
+Gitlet.</p>
+  </li>
+  <li>
+    <p><strong>Failure cases</strong>: If the remote branch’s head is not in the history
+of the current local head, print the error message <code class="language-plaintext highlighter-rouge">Please pull down
+remote changes before pushing.</code>  If the remote <code class="language-plaintext highlighter-rouge">.gitlet</code> directory does not
+exist, print <code class="language-plaintext highlighter-rouge">Remote directory not found.</code></p>
+  </li>
+  <li>
+    <p><strong>Dangerous?</strong>: No.</p>
+  </li>
+</ul>
+
+<h4 id="fetch">fetch</h4>
+
+<ul>
+  <li>
+    <p><strong>Usage</strong>: <code class="language-plaintext highlighter-rouge">gitlet fetch [remote name] [remote branch name]</code></p>
+  </li>
+  <li>
+    <p><strong>Description</strong>: Brings down commits from the remote Gitlet repository into the
+local Gitlet repository. Basically, this copies all commits and blobs from the given
+branch in the remote repository (that are not already in the current
+repository) into a branch named <code class="language-plaintext highlighter-rouge">[remote name]/[remote branch name]</code> in the
+local <code class="language-plaintext highlighter-rouge">.gitlet</code> (just
+as in real Git), changing <code class="language-plaintext highlighter-rouge">[remote name]/[remote branch name]</code> to point
+to the head commit (thus copying the contents of the branch from the remote
+repository to the current one).  This branch is created in the local
+repository if it did not previously exist.</p>
+  </li>
+  <li>
+    <p><strong>Failure cases</strong>: If the remote Gitlet repository does not have the given
+branch name, print the error message <code class="language-plaintext highlighter-rouge">That remote does not have that
+branch.</code>  If the remote <code class="language-plaintext highlighter-rouge">.gitlet</code> directory does not
+exist, print <code class="language-plaintext highlighter-rouge">Remote directory not found.</code>
+</p>
+  </li>
+  <li>
+    <p><strong>Dangerous?</strong> No</p>
+  </li>
+</ul>
+
+<h4 id="pull">pull</h4>
+
+<ul>
+  <li>
+    <p><strong>Usage</strong>: <code class="language-plaintext highlighter-rouge">gitlet pull [remote name] [remote branch name]</code></p>
+  </li>
+  <li>
+    <p><strong>Description</strong>: Fetches branch <code class="language-plaintext highlighter-rouge">[remote name]/[remote branch name]</code> as
+for the <code class="language-plaintext highlighter-rouge">fetch</code> command, and then merges that fetch into the current branch.</p>
+  </li>
+  <li>
+    <p><strong>Failure cases</strong>: Just the failure cases of <code class="language-plaintext highlighter-rouge">fetch</code> and <code class="language-plaintext highlighter-rouge">merge</code>
+together.</p>
+  </li>
+  <li>
+    <p><strong>Dangerous?</strong> Yes!</p>
+  </li>
+</ul>
+
+<h2 id="i-things-to-avoid">Implementation pitfalls</h2>
+<ul><li>Do not persist pointers, raw class memory, or entire recursively linked histories.</li><li>Do not use std::hash for persisted IDs; use the supplied SHA-1 helper.</li><li>Do not rely on unordered-map iteration order when producing canonical bytes or sorted output.</li><li>Do not call the real git command to implement Gitlet operations.</li><li>Do not keep required state only in static variables. Every invocation must work as a new process.</li><li>Do not treat the byte-level deletion guard as sufficient protection against overwriting untracked files.</li></ul>
+<h2 id="j-acknowledgments">Sources and adaptation</h2>
+<p>The original project was created by Joseph Moghadam, with modifications by Paul Hilfinger and the UC Berkeley CS61B course staff. This adaptation uses the Spring 2021 materials. Command explanations and diagrams are retained from the saved course materials. This local adaptation replaces the Java starter, build, persistence guidance, testing integration, and prerequisite with C++17 equivalents. SHA-1 and binary/file helpers are supplied infrastructure, not student exercises.</p></body></html>
