@@ -22,3 +22,8 @@ __pycache__/
 **/[Bb]ooks/**/*.pdf
 **/[Tt]extbook/**/*.pdf
 **/[Tt]extbooks/**/*.pdf
+
+# C++ lab and project build products
+build/
+*.o
+*.dSYM/

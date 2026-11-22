@@ -2,6 +2,8 @@
 
 This repo is my record of working through CS61B: my notes, homework, labs and projects, plus any supplementary resources I found useful for learning the material.
 
+The lab and project starters use C++17. [C++ build and setup instructions](3%20Labs/README.md) are included with the labs. LeetCode practice uses Python.
+
 ## Layout
 
 ```

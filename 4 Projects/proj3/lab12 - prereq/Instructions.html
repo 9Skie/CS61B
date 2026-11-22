@@ -1,4 +1,8 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><title>Lab 12: Getting Started on Project 3 | CS 61B Spring 2021</title><style>body{font:17px/1.65 system-ui,sans-serif;color:#20252c;max-width:1000px;margin:40px auto;padding:0 28px}h1,h2,h3{line-height:1.25;margin-top:1.6em}a{color:#165eb8}pre{background:#f2f4f7;padding:18px;overflow:auto;font-size:14px;line-height:1.5}code{font-family:ui-monospace,monospace}img{max-width:100%;height:auto}table{border-collapse:collapse}td,th{border:1px solid #ccd1d8;padding:8px}blockquote,.alert{border-left:4px solid #a5b7c9;padding:8px 20px;background:#f5f7fa}.source{font-size:14px;border-bottom:1px solid #ccc;padding-bottom:18px}button,.hash-link,.theme-doc-breadcrumbs{display:none}.token-line{display:block}iframe{max-width:100%}</style><body><p class="source">Downloaded course instructions · <a href="https://sp21.datastructur.es/materials/lab/lab12/lab12">Original source</a><br>Images are saved locally. Linked videos and external services require internet access.</p>
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Lab 12: Getting Started on Project 3 | CS 61B Spring 2021</title><style>body{font:17px/1.65 system-ui,sans-serif;color:#20252c;max-width:1000px;margin:40px auto;padding:0 28px}h1,h2,h3{line-height:1.25;margin-top:1.6em}a{color:#165eb8}pre{background:#f2f4f7;padding:18px;overflow:auto;font-size:14px;line-height:1.5}code{font-family:ui-monospace,monospace}img{max-width:100%;height:auto}table{border-collapse:collapse}td,th{border:1px solid #ccd1d8;padding:8px}blockquote,.alert{border-left:4px solid #a5b7c9;padding:8px 20px;background:#f5f7fa}.source{font-size:14px;border-bottom:1px solid #ccc;padding-bottom:18px}button,.hash-link,.theme-doc-breadcrumbs{display:none}.token-line{display:block}iframe{max-width:100%}</style><body><section id="cpp-start"><h1>Hexagonal worlds — C++17</h1><p>This folder uses C++17. Class and template definitions are in <code>.hpp</code> files; executable entry points and test runners are in <code>.cpp</code> files. The supplied TODOs and deliberate debugging errors remain for you to complete. Course submission/grading passages below describe the original course; use the local C++ commands and test runners here.</p><p>Graphics dependencies: SDL3, FreeType, libpng, and pkg-config. On macOS: <code>brew install sdl3 freetype libpng pkg-config</code>. On Debian/Ubuntu: <code>install SDL3 development headers, FreeType, libpng, pkg-config, a C++17 compiler, and a Unicode font through your package manager</code>. The drawing API is in <code>3 Labs/support/Draw.hpp</code>. Fonts are detected automatically; set <code>CS61B_FONT</code> to a Unicode TTF path if needed. Images use PNG. Run graphical programs on the main thread.</p><p>Use <code>Draw::text</code>, <code>Draw::clear</code>, <code>Draw::show</code>, <code>Draw::hasNextKeyTyped</code>, and <code>Draw::nextKeyTyped</code>. Font size is set with <code>Draw::setFont(30)</code>; colors include <code>Color::WHITE</code> and <code>Color(r,g,b)</code>. Coordinates begin at the bottom left. Close-aware loops should check <code>Draw::isOpen()</code>.</p><pre><code>cd ..
+make
+./build/BoringWorldDemo
+./build/RandomWorldDemo
+./build/HexWorld</code></pre><p>Work in <code>HexWorld.hpp</code> and <code>HexWorld.cpp</code>. Design a helper that adds a side-length-s hexagon at a chosen position. Its widest part must be two rows thick. Support multiple sizes, then arrange 19 hexagons into the illustrated tessellation. Split drawing and geometry into small helpers and use seeded randomness for terrain and color variants. Complete <code>project3prep.md</code> after reviewing world generation.</p><hr></section><p class="source">Course instructions adapted for the C++ starter · <a href="https://sp21.datastructur.es/materials/lab/lab12/lab12">Original source</a><br>Images are saved locally. Linked videos and external services require internet access.</p>
             <header class="title">Lab 12: Getting Started on Project 3</header><ul id="markdown-toc">
   <li><a href="Instructions.html#pre-lab" id="markdown-toc-pre-lab">Pre-lab</a></li>
   <li><a href="Instructions.html#introduction" id="markdown-toc-introduction">Introduction</a></li>
@@ -52,8 +56,7 @@
 
 <h4 id="boring-world">Boring World</h4>
 
-<p>Open the Project 3 skeleton in IntelliJ <strong>Make sure you select the folder called proj3! Not the folder called lab12.</strong> Your IntelliJ should look something like
-the following (you may need to click the right pointing arrows to expand and see the contents of the <code class="language-plaintext highlighter-rouge">byow.Core</code>, <code class="language-plaintext highlighter-rouge">byow.lab12</code>, packages, etc.). Note that there is some stuff in here, like <code class="language-plaintext highlighter-rouge">lab13</code>, <code class="language-plaintext highlighter-rouge">InputDemo</code>, and <code class="language-plaintext highlighter-rouge">SaveDemo</code>, that isn’t part of lab 12. That’s okay! We’ll just focus on the <code class="language-plaintext highlighter-rouge">byow.lab12</code> package for now. Make sure you import the project from <code class="language-plaintext highlighter-rouge">pom.xml</code> as usual.</p>
+<p>Build with the C++ Makefile from the Project 3 directory. The shared drawing API is in <code>3 Labs/support/Draw.hpp</code>; no IDE project import is needed.</p>
 
 <p><img src="../../../../Course%20Resources/Assets/74fd7bbaf1c61a9c.png" alt="intellij import"></img></p>
 
@@ -64,30 +67,21 @@ the following (you may need to click the right pointing arrows to expand and see
 <p>This world consists of empty space, except for the rectangular block near the bottom middle. The code to generate this world consists of three main parts:</p>
 <ul>
   <li>Initializing the tile rendering engine.</li>
-  <li>Generating a two dimensional <code class="language-plaintext highlighter-rouge">TETile[][]</code> array.</li>
-  <li>Using the tile rendering engine to display the <code class="language-plaintext highlighter-rouge">TETile[][]</code> array.</li>
+  <li>Generating a two dimensional <code class="language-plaintext highlighter-rouge">World</code> array.</li>
+  <li>Using the tile rendering engine to display the <code class="language-plaintext highlighter-rouge">World</code> array.</li>
 </ul>
 
 <p>The API for the tile rendering engine is simple. After creating a <code class="language-plaintext highlighter-rouge">TERenderer</code> object, you simply need to call the <code class="language-plaintext highlighter-rouge">initialize</code> method, specifying the width and height of your world, where the width and height are given in terms of the number of tiles. Each tile is 16 pixels by 16 pixels, so for example, if we called <code class="language-plaintext highlighter-rouge">ter.initialize(10, 20)</code>, we’d end up with a world that is 10 tiles wide and 20 tiles tall, or equivalently 160 pixels wide and 320 pixels tall. For this lab, you don’t need to think about pixels, though you’ll eventually need to when you start building the user interface for Project 3 (discussed in the next lab).</p>
 
-<p><code class="language-plaintext highlighter-rouge">TETile</code> objects are also quite simple. You can either build them from scratch using the <code class="language-plaintext highlighter-rouge">TETile</code> constructor (see <code class="language-plaintext highlighter-rouge">TETile.java</code>), or you can choose from a palette of pregenerated tiles in the file <code class="language-plaintext highlighter-rouge">Tileset.java</code>. For example, the code from <code class="language-plaintext highlighter-rouge">BoringWorldDemo.java</code> below generates a 2D array of tiles and fills them with the pregenerated tile given by <code class="language-plaintext highlighter-rouge">Tileset.NOTHING</code>.</p>
+<p><code class="language-plaintext highlighter-rouge">TETile</code> objects are also quite simple. You can either build them from scratch using the <code class="language-plaintext highlighter-rouge">TETile</code> constructor (see <code class="language-plaintext highlighter-rouge">TETile.hpp</code>), or you can choose from a palette of pregenerated tiles in the file <code class="language-plaintext highlighter-rouge">Tileset.hpp</code>. For example, the code from <code class="language-plaintext highlighter-rouge">BoringWorldDemo.cpp</code> below generates a 2D array of tiles and fills them with the pregenerated tile given by <code class="language-plaintext highlighter-rouge">Tileset.NOTHING</code>.</p>
 
-<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">TETile</span><span class="o">[][]</span> <span class="n">world</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">TETile</span><span class="o">[</span><span class="no">WIDTH</span><span class="o">][</span><span class="no">HEIGHT</span><span class="o">];</span>
-<span class="k">for</span> <span class="o">(</span><span class="kt">int</span> <span class="n">x</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span> <span class="n">x</span> <span class="o">&lt;</span> <span class="no">WIDTH</span><span class="o">;</span> <span class="n">x</span> <span class="o">+=</span> <span class="mi">1</span><span class="o">)</span> <span class="o">{</span>
-    <span class="k">for</span> <span class="o">(</span><span class="kt">int</span> <span class="n">y</span> <span class="o">=</span> <span class="mi">0</span><span class="o">;</span> <span class="n">y</span> <span class="o">&lt;</span> <span class="no">HEIGHT</span><span class="o">;</span> <span class="n">y</span> <span class="o">+=</span> <span class="mi">1</span><span class="o">)</span> <span class="o">{</span>
-        <span class="n">world</span><span class="o">[</span><span class="n">x</span><span class="o">][</span><span class="n">y</span><span class="o">]</span> <span class="o">=</span> <span class="nc">Tileset</span><span class="o">.</span><span class="na">NOTHING</span><span class="o">;</span>
-    <span class="o">}</span>
-<span class="o">}</span>
-</code></pre></div></div>
+<div class="language-java highlighter-rouge"><div class="highlight"><pre><code>World world(WIDTH, std::vector&lt;TETile&gt;(HEIGHT, Tileset::NOTHING));</code></pre></div></div>
 
 <p>Of course, we can overwrite existing tiles. For example, the code below from <code class="language-plaintext highlighter-rouge">BoringWorld.java</code> creates a 14 x 4 tile region made up of the pregenerated tile <code class="language-plaintext highlighter-rouge">Tileset.WALL</code> and writes it over some of the <code class="language-plaintext highlighter-rouge">NOTHING</code> tiles created by the loop code shown immediately above.</p>
 
-<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">for</span> <span class="o">(</span><span class="kt">int</span> <span class="n">x</span> <span class="o">=</span> <span class="mi">20</span><span class="o">;</span> <span class="n">x</span> <span class="o">&lt;</span> <span class="mi">35</span><span class="o">;</span> <span class="n">x</span> <span class="o">+=</span> <span class="mi">1</span><span class="o">)</span> <span class="o">{</span>
-    <span class="k">for</span> <span class="o">(</span><span class="kt">int</span> <span class="n">y</span> <span class="o">=</span> <span class="mi">5</span><span class="o">;</span> <span class="n">y</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="o">;</span> <span class="n">y</span> <span class="o">+=</span> <span class="mi">1</span><span class="o">)</span> <span class="o">{</span>
-        <span class="n">world</span><span class="o">[</span><span class="n">x</span><span class="o">][</span><span class="n">y</span><span class="o">]</span> <span class="o">=</span> <span class="nc">Tileset</span><span class="o">.</span><span class="na">WALL</span><span class="o">;</span>
-    <span class="o">}</span>
-<span class="o">}</span>
-</code></pre></div></div>
+<div class="language-java highlighter-rouge"><div class="highlight"><pre><code>for (int x = 20; x &lt; 35; ++x) {
+    for (int y = 5; y &lt; 10; ++y) world[x][y] = Tileset::WALL;
+}</code></pre></div></div>
 
 <p>The last step in rendering is to simply call <code class="language-plaintext highlighter-rouge">ter.renderFrame(world)</code>, where <code class="language-plaintext highlighter-rouge">ter</code> is a <code class="language-plaintext highlighter-rouge">TERenderer</code> object. Changes made to the tiles array will not appear on the screen until you call the <code class="language-plaintext highlighter-rouge">renderFrame</code> method.</p>
 
@@ -97,11 +91,11 @@ the following (you may need to click the right pointing arrows to expand and see
 
 <h4 id="random-world">Random World</h4>
 
-<p>Now open up <code class="language-plaintext highlighter-rouge">RandomWorldDemo.java</code>. Try running it and you should see something like this:</p>
+<p>Now open up <code class="language-plaintext highlighter-rouge">RandomWorldDemo.cpp</code>. Try running it and you should see something like this:</p>
 
 <p><img src="../../../../Course%20Resources/Assets/741e16164be32f4e.png" alt="random world"></img></p>
 
-<p>This world is sheer chaos – walls and flowers everywhere! If you look at the <code class="language-plaintext highlighter-rouge">RandomWorldDemo.java</code> file, you’ll
+<p>This world is sheer chaos – walls and flowers everywhere! If you look at the <code class="language-plaintext highlighter-rouge">RandomWorldDemo.cpp</code> file, you’ll
 see that we’re doing a few new things:</p>
 <ul>
   <li>We create and use an object of type <code class="language-plaintext highlighter-rouge">Random</code> that is a “<a href="https://en.wikipedia.org/wiki/Pseudorandom_number_generator">pseudorandom number generator</a>”.</li>
@@ -111,27 +105,17 @@ see that we’re doing a few new things:</p>
 
 <p>A random number generator does exactly what its name suggests, it produces an infinite stream of numbers that appear to be randomly ordered. The <code class="language-plaintext highlighter-rouge">Random</code> class provides the ability to produce <em>pseudorandom</em> numbers for us in Java.  For example, the following code generates and prints 3 random integers:</p>
 
-<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">Random</span> <span class="n">r</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Random</span><span class="o">(</span><span class="mi">1000</span><span class="o">);</span>
-<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="n">r</span><span class="o">.</span><span class="na">nextInt</span><span class="o">());</span>
-<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="n">r</span><span class="o">.</span><span class="na">nextInt</span><span class="o">());</span>
-<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="n">r</span><span class="o">.</span><span class="na">nextInt</span><span class="o">());</span>
-</code></pre></div></div>
+<div class="language-java highlighter-rouge"><div class="highlight"><pre><code>course::Random r(1000);
+for (int i = 0; i &lt; 3; ++i) std::cout &lt;&lt; r.nextInt() &lt;&lt; &quot;\n&quot;;</code></pre></div></div>
 
 <p>We call <code class="language-plaintext highlighter-rouge">Random</code> a <em>pseudorandom</em> number generator because it isn’t truly random. Underneath the hood, it uses cool math to take the previously generated number and calculate the next number. We won’t go into the details of this math, but see <a href="https://en.wikipedia.org/wiki/Pseudorandom_number_generator">Wikipedia</a> if you’re curious. Importantly, the sequence generated is deterministic, and the way we get different sequences is by choosing what is called a “seed”. If you start up a pseudorandom generator with a particular seed, you are guaranteed to get the exact sequence of random values.</p>
 
 <p>In the above code snippet, the seed is the input to the <code class="language-plaintext highlighter-rouge">Random</code> constructor, so 1000 in this case. Having control over the seed is pretty useful since it allows us to indirectly control the output of the random number generator. If we provide the same seed to the constructor, we will get the same sequence values. For example, the code below prints 4 random numbers, then prints the SAME 4 random numbers again. Since the seed is different than the previous code snippet, the 4 numbers will likely be different than the 3 numbers printed above.</p>
 
-<div class="language-java highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nc">Random</span> <span class="n">r</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Random</span><span class="o">(</span><span class="mi">82731</span><span class="o">);</span>
-<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="n">r</span><span class="o">.</span><span class="na">nextInt</span><span class="o">());</span>
-<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="n">r</span><span class="o">.</span><span class="na">nextInt</span><span class="o">());</span>
-<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="n">r</span><span class="o">.</span><span class="na">nextInt</span><span class="o">());</span>
-<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="n">r</span><span class="o">.</span><span class="na">nextInt</span><span class="o">());</span>
-<span class="n">r</span> <span class="o">=</span> <span class="k">new</span> <span class="nc">Random</span><span class="o">(</span><span class="mi">82731</span><span class="o">);</span>
-<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="n">r</span><span class="o">.</span><span class="na">nextInt</span><span class="o">());</span>
-<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="n">r</span><span class="o">.</span><span class="na">nextInt</span><span class="o">());</span>
-<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="n">r</span><span class="o">.</span><span class="na">nextInt</span><span class="o">());</span>
-<span class="nc">System</span><span class="o">.</span><span class="na">out</span><span class="o">.</span><span class="na">println</span><span class="o">(</span><span class="n">r</span><span class="o">.</span><span class="na">nextInt</span><span class="o">());</span>
-</code></pre></div></div>
+<div class="language-java highlighter-rouge"><div class="highlight"><pre><code>course::Random r(82731);
+for (int i = 0; i &lt; 4; ++i) std::cout &lt;&lt; r.nextInt() &lt;&lt; &quot;\n&quot;;
+r.setSeed(82731);
+for (int i = 0; i &lt; 4; ++i) std::cout &lt;&lt; r.nextInt() &lt;&lt; &quot;\n&quot;;</code></pre></div></div>
 
 <p>In the case a seed is not provided by the user/programmer, i.e. <code class="language-plaintext highlighter-rouge">Random r = new Random()</code>, random number generators select a seed using some value that changes frequently and produces a lot of unique values, such as the current time and date. Seeds can be generated in all sorts of other stranger ways, such as <a href="https://www.popularmechanics.com/technology/security/news/a28921/lava-lamp-security-cloudflare/">using a wall full of lava lamps</a>.</p>
 
@@ -183,9 +167,9 @@ are shown below. Note that your hexagon should always have a “middle” that i
 
 <p>These helper methods might involve drawing tasks, or they might involve calculating useful quantities.</p>
 
-<p>In my case, I created two simple private helper methods to compute certain key quantities, and wrote JUnit tests to verify that they worked properly. I did not write any helper methods that performed drawing subtasks, but in retrospect, I probably should have.</p>
+<p>In my case, I created two simple private helper methods to compute certain key quantities, and wrote C++ tests to verify that they worked properly. I did not write any helper methods that performed drawing subtasks, but in retrospect, I probably should have.</p>
 
-<p>To verify that my <code class="language-plaintext highlighter-rouge">addHexagon</code> method worked, I simply wrote a short main method and verified that things looked OK.  Unfortunately, writing a <code class="language-plaintext highlighter-rouge">JUnit</code> test to verify that you’ve properly drawn a hexagon is just as hard as drawing the hexagon itself,so you won’t be able to built confidence in your <code class="language-plaintext highlighter-rouge">addHexagon</code> method in a nice way like you can with simpler methods.</p>
+<p>To verify that my <code class="language-plaintext highlighter-rouge">addHexagon</code> method worked, I simply wrote a short main method and verified that things looked OK.  Unfortunately, writing a <code class="language-plaintext highlighter-rouge">C++ test runner</code> test to verify that you’ve properly drawn a hexagon is just as hard as drawing the hexagon itself,so you won’t be able to built confidence in your <code class="language-plaintext highlighter-rouge">addHexagon</code> method in a nice way like you can with simpler methods.</p>
 
 <p>Note that even deciding the <code class="language-plaintext highlighter-rouge">addHexagon</code> method signature is a non-trivial task! This exercise will give you a glimpse into the kind of decision-making and design thinking you will have to do in Project 3.</p>
 
